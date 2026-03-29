@@ -201,3 +201,27 @@
   - **Backend:** модель **`Wishlist`**: **`description`**, **`link_url`**, **`photo_path`**; **`ALTER wishlists`** в **`main.py`**; **`wishlist_storage.py`** (валидация JPEG/PNG, 5 МБ, ресайз, UUID-имена); **`POST/PATCH /api/users/me/wishlists`** — **`multipart/form-data`**, **`PATCH`** с **`clear_photo`**; **`GET /api/wishlists/{item_id}/photo`** — роутер **`routers/wishlists.py`**; удаление файла при **DELETE** и замене фото; зависимость **`pillow`**; volume **`backend_wishlist_photos`** в compose; **`schemas/wishlist`**: **`WishlistItemOut`**, **`build_wishlist_item_out`**, **`parse_optional_link_url`** (**`HttpUrl`**).
   - **Frontend:** **`WishlistItemCard`**, **`WishlistItemModal`**, **`wishlistPhotoUrl`**; **`ProfilePage`** / **`UserProfilePage`**; тип **`WishlistItem`** с **`has_photo`**, **`description`**, **`link_url`**; внешние ссылки **«Где купить»** с **`noopener noreferrer`**.
 - **Итог для следующих сессий:** Старый JSON-only **`POST …/wishlists` с `{title}`** заменён на **multipart**; фото вишлиста не отдаются через StaticFiles — только **`/api/wishlists/{id}/photo`**; после обновления бэкенда нужны **Pillow** и том **`wishlist`** в Docker.
+
+### 2026-03-29 — Настройки профиля /profile/settings, Toast, аватар с камерой
+
+- **Запрос (суть):** Полноценное редактирование ФИО и даты на отдельной странице (не **`/setup-profile`**); навигация «Настройки» в шапке; после сохранения toast и остаться на странице; аватар только на **`/profile`** — иконка камеры на превью.
+- **Сделано:** **`ProfileSettingsPage`**, роут **`/profile/settings`**, **`ToastProvider`** + **`useToast`**, пункт в **`AppShell`**; **`profileValidation.ts`** общий с **`SetupProfilePage`**; **`ProfilePage`**: камера на аватаре, ссылка на настройки вместо **`/setup-profile`** для ФИО/даты; **`PATCH /api/users/me`**: явный **`Depends(get_db)`** + **`flush`**. Валидация «дата не в будущем» уже в **`UserProfileUpdate`** на бэкенде.
+- **Итог для следующих сессий:** **`/setup-profile`** — только первичный вход; правки после регистрации — **`/profile/settings`**.
+
+### 2026-03-29 — Админ: блокировка, список пользователей, правка данных
+
+- **Запрос (суть):** Администратор: блокировать пользователей, менять данные, смотреть профили, полный контроль.
+- **Сделано:** Поле **`User.is_blocked`**, **`403 account_blocked`** в **`get_current_user`**; **`TELEGRAM_ADMIN_ID`** определяет **`is_admin`** в **`UserMeOut`** и доступ к **`/api/admin/*`** (**`get_current_admin`**). Эндпоинты: список/карточка пользователя (вишлист, счётчики подписок), **`PATCH`** (ФИО, дата, блокировка; нельзя заблокировать себя), **`DELETE`** пункта вишлиста. Заблокированные исключены из **`birthdays/upcoming`**, ежедневных напоминаний, скрыты в **`GET /users/{id}`**, подписках, аватаре и фото вишлиста (админ видит). Фронт: **`/admin`**, **`/admin/users/:id`**, пункт «Админ» в шапке, **`notifyAccountBlocked`** / баннер на логине.
+- **Итог для следующих сессий:** Без **`TELEGRAM_ADMIN_ID`** в `.env` админки нет; ID должен совпасть с **`telegram_id`** учётки в БД.
+
+### 2026-03-29 — Админ: ожидание ссылки вместо кнопок создания группы
+
+- **Запрос (суть):** Убрать кнопки «✅ Создать группу / ❌ Пропустить» в `birthday_admin_flow.py` и перейти в сценарий: админ присылает URL, после чего появляется кнопка рассылки подписчикам.
+- **Сделано:** `backend/birthday_admin_flow.py`: режимы `STATE_AWAIT_LINK` / `STATE_LINK_RECEIVED`, обработчик `handle_telegram_admin_birthday_prompt_message`, новая callback-кнопка `bd_g:<prompt_id>` и рассылка с паузой `asyncio.sleep(0.05)`; `backend/routers/telegram_webhook.py` — подключение message-хендлера; `telegram_webhook` при `TELEGRAM_ADMIN_ID` обновляет старые сообщения, если они ещё с кнопками.
+- **Итог для следующих сессий:** Для новых промптов в `TELEGRAM_ADMIN_ID` кнопок нет: «ожидаю ссылку» → админ отправляет URL → появляется «Разослать подписчикам».
+
+### 2026-03-29 — Админ: тестовые пользователи из фронта
+
+- **Запрос (суть):** Дать администратору возможность создавать тестовых пользователей из меню админки.
+- **Сделано:** `backend/models.py` + `main.py`: поле `User.is_test`; `POST /api/admin/users/test` (только админ) создаёт синтетические аккаунты; `frontend/src/pages/AdminUsersPage.tsx` добавлена секция «Тестовые пользователи» (input count 1–20 + создание), тип в таблице + бейдж; `frontend/src/pages/AdminUserDetailPage.tsx` — пояснение для тестовых.
+- **Итог для следующих сессий:** Только админ видит секцию; тестовые записи имеют синтетический `telegram_id` и пометку `is_test`.

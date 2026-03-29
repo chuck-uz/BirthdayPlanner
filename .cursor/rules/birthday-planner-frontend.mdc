@@ -21,7 +21,7 @@ alwaysApply: false
 
 - `/login` — вне `AppShell`
 - `/setup-profile` — `SetupProfileRoute` (логин обязателен; профиль полный → редирект на `/`)
-- `AppShell`: `/`, `/profile` — `ProtectedRoute` с **`requireCompleteProfile`** → иначе `/setup-profile`
+- `AppShell`: `/`, `/profile`, **`/profile/settings`** — `ProtectedRoute` с **`requireCompleteProfile`** → иначе `/setup-profile`; в шапке пункт **«Настройки»** (иконка **`Settings`**) → **`/profile/settings`**
 - `*` → `Navigate` на `/`
 
 ## Компоненты
@@ -29,13 +29,16 @@ alwaysApply: false
 - **`TelegramAuth`** — основной вход: **ссылка в той же вкладке** (`popup=0`); запас — **`window.open`** + `popup=1`; iframe нельзя (CSP Telegram); **`postMessage` на фронте нет**
 - **`ProtectedRoute`** — нет user → `/login`; флаг `requireCompleteProfile`
 - **`AuthContext`** — `GET /api/users/me` с **`validateStatus` 200 | 401** (401 без cookie — штатно); `refreshUser`; на `focus` / `visibilitychange` — снова `refreshUser`
+- **`ToastProvider`** / **`useToast`** — `frontend/src/contexts/ToastContext.tsx` (например «Данные обновлены» на **`ProfileSettingsPage`**)
 - Тема: `ThemeContext`, `.dark` на `<html>`, палитра **оранжевый + чёрный/цинк** (не фиолетовый)
 
 ## Страницы и данные
 
 - **`SetupProfilePage`** — ФИО + `input type="date"`, `PATCH /api/users/me`, затем `refreshUser`
 - **`HomePage`** — `GET /api/users/birthdays/upcoming`, скелетоны/пустое состояние; карточки: аватар **`/api/users/{id}/avatar`**, ФИО, дата (**`birthdayFormat.ts`**), ссылка **Вишлист** (`/users/:id#wishlist`), **`BirthdayNotifyBell`**, **`BotStartModal`**, **Google Календарь** — **`buildGoogleCalendarBirthdayUrl`**
-- **`ProfilePage`** (`/profile`) — профиль + аватар; вишлист: сетка **`WishlistItemCard`**, добавление/редактирование в **`WishlistItemModal`** (**`multipart`** через **`fetch`**), типы **`WishlistItem`** в **`types/publicUser.ts`**
+- **`ProfilePage`** (`/profile`) — аватар: иконка **камеры** на превью → выбор файла; ссылка на **`/profile/settings`** для ФИО/даты; вишлист: **`WishlistItemCard`** / **`WishlistItemModal`**
+- **`ProfileSettingsPage`** (`/profile/settings`) — добровольное редактирование **ФИО** и **даты** (`PATCH /api/users/me`), без аватара; toast после сохранения; ссылка **«Назад на главную»**; не путать с **`/setup-profile`** (блокировка входа в приложение)
+- **`SetupProfilePage`** (`/setup-profile`) — первичное заполнение профиля, после сохранения редирект на **`/`**
 - **`UserProfilePage`** (`/users/:userId`) — чужой профиль; **`id="wishlist"`** + **`scroll-mt-24`**; вишлист — только просмотр **`WishlistItemCard`** (`variant="public"`); **`BotStartModal`** + **`refreshUser()`** после **`GET /me/telegram-delivery`**
 - **`wishlistPhotoUrl`** — `frontend/src/lib/wishlistPhotoUrl.ts` → **`GET /api/wishlists/{id}/photo`**
 - **`BotStartModal`** — `frontend/src/components/bot/BotStartModal.tsx`

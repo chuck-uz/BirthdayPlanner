@@ -9,7 +9,7 @@ import {
 } from 'react'
 
 import { api } from '@/lib/api'
-import { setUnauthorizedHandler } from '@/lib/authSession'
+import { notifyAccountBlocked, setAccountBlockedHandler, setUnauthorizedHandler } from '@/lib/authSession'
 import type { UserProfile } from '@/types/user'
 
 type AuthContextValue = {
@@ -28,10 +28,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     try {
       const res = await api.get<UserProfile>('/api/users/me', {
-        // 401 без cookie — нормальная ситуация (страница логина), не «ошибка» Axios.
-        validateStatus: (s) => s === 200 || s === 401,
+        validateStatus: (s) => s === 200 || s === 401 || s === 403,
       })
       if (res.status === 401) {
+        setUser(null)
+      } else if (res.status === 403) {
+        const d = (res.data as { detail?: string })?.detail
+        if (d === 'account_blocked') {
+          notifyAccountBlocked()
+        }
         setUser(null)
       } else {
         setUser(res.data)
@@ -78,7 +83,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null)
       setLoading(false)
     })
-    return () => setUnauthorizedHandler(null)
+    setAccountBlockedHandler(() => {
+      setUser(null)
+      setLoading(false)
+    })
+    return () => {
+      setUnauthorizedHandler(null)
+      setAccountBlockedHandler(null)
+    }
   }, [])
 
   const value = useMemo(

@@ -1,13 +1,20 @@
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Send } from 'lucide-react'
 
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { TelegramAuth } from '@/components/telegram/TelegramAuth'
 import { useAuth } from '@/contexts/AuthContext'
+import { readAndClearAccountBlockedFlag } from '@/lib/authSession'
 
 export function LoginPage() {
   const { user, loading } = useAuth()
+  const [wasBlocked, setWasBlocked] = useState(false)
   const location = useLocation()
+
+  useEffect(() => {
+    setWasBlocked(readAndClearAccountBlockedFlag())
+  }, [])
   const from = (location.state as { from?: string } | null)?.from ?? '/'
 
   if (!loading && user) {
@@ -69,6 +76,14 @@ export function LoginPage() {
                 </div>
 
                 <div className="flex flex-col items-center gap-8">
+                  {wasBlocked ? (
+                    <p
+                      role="alert"
+                      className="max-w-[320px] rounded-xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-center text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-200"
+                    >
+                      Аккаунт заблокирован администратором. Если это ошибка, свяжитесь с поддержкой.
+                    </p>
+                  ) : null}
                   {loading ? (
                     <div
                       className="flex h-28 w-full max-w-[320px] items-center justify-center rounded-2xl border border-zinc-200/80 bg-zinc-50/80 dark:border-zinc-700/60 dark:bg-zinc-950/40"

@@ -9,7 +9,7 @@ alwaysApply: false
 ## Точка входа
 
 - `main.py` — lifespan: `Base.metadata.create_all`, Postgres `ALTER` для новых колонок (**`is_bot_active`**, админ-промпты, колонки **`wishlists`** и т.д.), **`ensure_avatars_dir`** + **`ensure_wishlist_dir`**, CORS `allow_credentials=True`, origins: **`http://127.0.0.1`** / **`http://localhost`** (порт 80) и legacy **5173/5174** для локального Vite; планировщик APScheduler (напоминания о ДР); при настройках — **`telegram_set_webhook`**
-- Роутеры: **`telegram_auth`**, **`users`**, **`wishlists`** (`GET /api/wishlists/{item_id}/photo`), **`telegram_webhook`** (`POST /api/telegram/webhook`)
+- Роутеры: **`telegram_auth`**, **`admin`** (`/api/admin/...`, только при **`TELEGRAM_ADMIN_ID`**), **`users`**, **`wishlists`**, **`telegram_webhook`**
 - **Alembic нет** — схема через `create_all` + явные `ALTER TABLE … IF NOT EXISTS` где нужно
 
 ## Модули
@@ -29,9 +29,10 @@ alwaysApply: false
 - `GET /api/auth/telegram` — декоратор **`response_model=None`** (обязательно: иначе FastAPI падает на `RedirectResponse | HTMLResponse` → контейнер в restart → **502**). Callback Telegram; в проверке hash **не участвуют** ключи `next`, `popup`; успех → JWT HttpOnly; обычный режим → 302 на `next` или `FRONTEND_DEFAULT_URL`; **`popup` truthy** (`1|true|yes|on`) → **HTML 200** с **`location.replace(redirect)`** в окне popup (без `postMessage`), не 302
 - `POST /api/auth/logout`
 - `GET /api/users/me` — в т.ч. **`is_bot_active`**, **`has_avatar`**
-- `PATCH /api/users/me` — `UserProfileUpdate` (full_name минимум 2 слова, birth_date)
+- `PATCH /api/users/me` — `UserProfileUpdate` (full_name минимум 2 слова, birth_date не в будущем и т.д.); в роутере **`session.flush()`** после присвоения полей
 - `PATCH /api/users/me/avatar`, `GET /api/users/{id}/avatar` (JWT), `GET /api/users/{id}` (публичный профиль + вишлист **`WishlistItemOut`**)
 - Вишлист своего пользователя: **`GET/POST/PATCH/DELETE /api/users/me/wishlists`** — создание/правка через **`multipart/form-data`** (опционально файл фото); **`GET /api/wishlists/{item_id}/photo`** — файл фото (JWT, без прямого доступа к папке)
+- Админ (JWT + **`telegram_id == TELEGRAM_ADMIN_ID`**): **`GET /api/admin/users`**, **`GET/PATCH /api/admin/users/{id}`**, **`DELETE /api/admin/users/{id}/wishlists/{wishlist_id}`**; заблокированные пользователи получают **`403 account_blocked`** на обычных маршрутах с **`get_current_user`**
 - `GET /api/users/birthdays/upcoming`, подписки `GET/POST/DELETE …/users/{id}/subscription`, `GET /api/users/me/telegram-delivery`
 
 **Нет** `GET /api/auth/me` — клиент использует `/api/users/me`.

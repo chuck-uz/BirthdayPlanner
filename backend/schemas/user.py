@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from config import get_settings
 from models import User
 from schemas.wishlist import WishlistItemOut
 
@@ -40,12 +41,16 @@ class UserMeOut(BaseModel):
     has_avatar: bool = False
     avatar_url: str | None = None
     is_bot_active: bool = False
+    is_admin: bool = False
 
 
 def build_user_me_out(user: User) -> UserMeOut:
     name_ok = bool(user.full_name and user.full_name.strip())
     ap = getattr(user, "avatar_path", None)
     has_avatar = bool(ap and str(ap).strip())
+    settings = get_settings()
+    aid = settings.telegram_admin_id
+    is_admin = aid is not None and int(user.telegram_id) == int(aid)
     return UserMeOut(
         id=user.id,
         telegram_id=user.telegram_id,
@@ -55,6 +60,7 @@ def build_user_me_out(user: User) -> UserMeOut:
         has_avatar=has_avatar,
         avatar_url=f"/api/users/{user.id}/avatar" if has_avatar else None,
         is_bot_active=bool(getattr(user, "is_bot_active", False)),
+        is_admin=is_admin,
     )
 
 

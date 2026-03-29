@@ -52,11 +52,12 @@ async def telegram_send_message(
     *,
     parse_mode: str | None = "HTML",
     reply_markup: dict[str, Any] | None = None,
+    disable_web_page_preview: bool = True,
 ) -> bool:
     payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": disable_web_page_preview,
     }
     if parse_mode:
         payload["parse_mode"] = parse_mode
@@ -74,11 +75,12 @@ async def telegram_send_message_message_id(
     *,
     parse_mode: str | None = "HTML",
     reply_markup: dict[str, Any] | None = None,
+    disable_web_page_preview: bool = True,
 ) -> int | None:
     payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
-        "disable_web_page_preview": True,
+        "disable_web_page_preview": disable_web_page_preview,
     }
     if parse_mode:
         payload["parse_mode"] = parse_mode
@@ -108,6 +110,28 @@ async def telegram_answer_callback_query(
     if show_alert:
         payload["show_alert"] = True
     data = await telegram_api("answerCallbackQuery", payload)
+    return bool(data.get("ok"))
+
+
+async def telegram_edit_message_text(
+    chat_id: int,
+    message_id: int,
+    text: str,
+    *,
+    parse_mode: str | None = "HTML",
+    reply_markup: dict[str, Any] | None = None,
+) -> bool:
+    payload: dict[str, Any] = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
+    data = await telegram_api("editMessageText", payload)
     return bool(data.get("ok"))
 
 

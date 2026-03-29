@@ -16,6 +16,7 @@ from avatar_storage import (
     read_and_validate_avatar,
     save_avatar_bytes,
 )
+from admin_access import user_is_app_admin
 from birthday_notify_logic import run_subscribe_telegram_followup
 from birthday_utils import days_until_next_birthday
 from database import get_db
@@ -196,7 +197,9 @@ async def upcoming_birthdays(
     user: User = Depends(get_current_user),
 ) -> list[UpcomingBirthdayOut]:
     """Все пользователи с указанной датой рождения, по возрастанию дней до следующего ДР."""
-    result = await session.execute(select(User).where(User.birth_date.is_not(None)))
+    result = await session.execute(
+        select(User).where(User.birth_date.is_not(None), User.is_blocked.is_(False)),
+    )
     rows = result.scalars().all()
     target_ids = [u.id for u in rows]
     subscribed_ids: set[int] = set()
@@ -245,6 +248,8 @@ async def get_subscription_status(
     target = await session.get(User, target_user_id)
     if target is None or target.birth_date is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
+    if bool(getattr(target, "is_blocked", False)) and not user_is_app_admin(user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
     row = await session.execute(
         select(Subscription).where(
             Subscription.subscriber_id == user.id,
@@ -274,6 +279,8 @@ async def create_subscription(
         )
     target = await session.get(User, target_user_id)
     if target is None or target.birth_date is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
+    if bool(getattr(target, "is_blocked", False)) and not user_is_app_admin(user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
     row = await session.execute(
         select(Subscription).where(
@@ -330,10 +337,12 @@ async def delete_subscription(
 @router.patch("/me", response_model=UserMeOut)
 async def patch_me(
     body: UserProfileUpdate,
+    session: Annotated[AsyncSession, Depends(get_db)],
     user: User = Depends(get_current_user),
 ) -> UserMeOut:
     user.full_name = body.full_name
     user.birth_date = body.birth_date
+    await session.flush()
     return build_user_me_out(user)
 
 
@@ -357,10 +366,12 @@ async def patch_my_avatar(
 async def get_user_avatar(
     user_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
-    _: User = Depends(get_current_user),
+    viewer: User = Depends(get_current_user),
 ) -> FileResponse:
     target = await session.get(User, user_id)
     if target is None or not (target.avatar_path and str(target.avatar_path).strip()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
+    if bool(getattr(target, "is_blocked", False)) and not user_is_app_admin(viewer):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
     try:
         path = filesystem_path_for_stored(target.avatar_path)
@@ -379,7 +390,7 @@ async def get_user_avatar(
 async def get_user_public_profile(
     user_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
-    _: User = Depends(get_current_user),
+    viewer: User = Depends(get_current_user),
 ) -> UserPublicProfileOut:
     """Профиль именинника и вишлист (для авторизованных пользователей)."""
     result = await session.execute(
@@ -389,5 +400,7 @@ async def get_user_public_profile(
     )
     u = result.scalar_one_or_none()
     if u is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
+    if bool(getattr(u, "is_blocked", False)) and not user_is_app_admin(viewer):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
     return _public_profile_from_user(u)

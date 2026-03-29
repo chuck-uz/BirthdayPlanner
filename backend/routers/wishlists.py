@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from admin_access import user_is_app_admin
 from database import get_db
 from deps import get_current_user
 from models import User, Wishlist
@@ -21,11 +22,14 @@ router = APIRouter(prefix="/api/wishlists", tags=["wishlists"])
 async def get_wishlist_item_photo(
     item_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
-    _: User = Depends(get_current_user),
+    viewer: User = Depends(get_current_user),
 ) -> FileResponse:
     result = await session.execute(select(Wishlist).where(Wishlist.id == item_id))
     item = result.scalar_one_or_none()
     if item is None or not (item.photo_path and str(item.photo_path).strip()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="wishlist_photo_not_found")
+    owner = await session.get(User, item.user_id)
+    if owner is not None and bool(getattr(owner, "is_blocked", False)) and not user_is_app_admin(viewer):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="wishlist_photo_not_found")
     try:
         path = filesystem_path_for_stored(item.photo_path)

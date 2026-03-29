@@ -56,4 +56,9 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="user_not_found",
         )
+    if bool(getattr(user, "is_blocked", False)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="account_blocked",
+        )
     return user
