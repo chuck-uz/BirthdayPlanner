@@ -3,7 +3,7 @@ import { Lock } from 'lucide-react'
 
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { TelegramAuth } from '@/components/telegram/TelegramAuth'
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function LoginPage() {
@@ -30,20 +30,13 @@ export function LoginPage() {
       <div className="flex min-h-svh items-center justify-center px-4 py-16">
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
           <Card className="text-center">
-            <CardHeader>
-              <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-2xl bg-orange-600/10 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400">
+            <CardHeader className="pb-8 pt-10">
+              <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-orange-600/10 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400">
                 <Lock className="size-6" aria-hidden />
               </div>
-              <CardTitle>Вход</CardTitle>
-              <CardDescription>
-                Авторизуйтесь через Telegram. Домен виджета в BotFather должен быть{' '}
-                <span className="font-medium text-zinc-700 dark:text-zinc-300">
-                  http://127.0.0.1
-                </span>
-                .
-              </CardDescription>
+              <CardTitle className="text-xl">Вход через Telegram</CardTitle>
             </CardHeader>
-            <div className="flex flex-col items-center gap-4 pt-2">
+            <div className="flex flex-col items-center gap-6 px-6 pb-10">
               {loading ? (
                 <div className="h-10 w-10 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
               ) : (

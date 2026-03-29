@@ -18,7 +18,10 @@ api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      notifyUnauthorized()
+      const url = error.config?.url ?? ''
+      if (!url.includes('/api/users/me')) {
+        notifyUnauthorized()
+      }
     }
     return Promise.reject(error)
   },
