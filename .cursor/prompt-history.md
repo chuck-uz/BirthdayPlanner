@@ -225,3 +225,18 @@
 - **Запрос (суть):** Дать администратору возможность создавать тестовых пользователей из меню админки.
 - **Сделано:** `backend/models.py` + `main.py`: поле `User.is_test`; `POST /api/admin/users/test` (только админ) создаёт синтетические аккаунты; `frontend/src/pages/AdminUsersPage.tsx` добавлена секция «Тестовые пользователи» (input count 1–20 + создание), тип в таблице + бейдж; `frontend/src/pages/AdminUserDetailPage.tsx` — пояснение для тестовых.
 - **Итог для следующих сессий:** Только админ видит секцию; тестовые записи имеют синтетический `telegram_id` и пометку `is_test`.
+
+### 2026-03-29 — Веб-админка рассылок /admin/dashboard + напоминание админу в Telegram
+
+- **Запрос (суть):** Сделать единый админ-сценарий рассылок через фронт: `GET /api/admin/birthdays`, `POST /api/admin/broadcast-link`, защищённый `/admin/dashboard`, модалка с URL, статус «Отправлено», валидация `https://t.me/...`, кнопка «Админ-панель» в профиле; убрать предыдущие варианты рассылок; напоминать админу в Telegram за 14 дней.
+- **Сделано:**  
+  - **Backend:** добавлен alias-зависимость `get_admin_user`; новые схемы `AdminBirthdayDashboardItemOut`, `AdminBroadcastLinkIn/Out`; эндпоинты `GET /api/admin/birthdays` (сортировка по ближайшему ДР, `subscribers_count`, `status`) и `POST /api/admin/broadcast-link` (исключает именинника, отправляет подписчикам ссылку и кнопку, `sleep(0.05)`, фиксирует `BirthdayEvent`).  
+  - **Scheduler/логика:** `jobs/birthday_notifications.py` в режиме `TELEGRAM_ADMIN_ID` шлёт админу Telegram-напоминание за 14 дней с переходом в `/admin/dashboard`; `birthday_notify_logic.py` отключает старый Telegram-поток ручных кнопок при наличии admin id, чтобы не дублировать веб-рассылку.  
+  - **Frontend:** новая страница `frontend/src/pages/AdminDashboardPage.tsx`; роуты `/admin/dashboard` и `/admin/users`; `/admin` редиректит на dashboard; модалка рассылки, фронтовая валидация `https://t.me/...`, toast об успехе, колонка статуса; в `ProfilePage` добавлена ссылка «Админ-панель» только для `user.is_admin`.
+- **Итог для следующих сессий:** Основной путь рассылок — только `/admin/dashboard`; Telegram-напоминание админу остаётся, старые телеграм-кнопочные варианты для админа больше не используются.
+
+### 2026-03-29 — Админ: вкладки «Рассылки / Пользователи», блокировка из списка
+
+- **Запрос (суть):** Дополнительная вкладка в админ-панели для управления пользователями (блокировка/разблокировка).
+- **Сделано:** `frontend/src/components/admin/AdminLayout.tsx` — вкладки **Рассылки** (`/admin/dashboard`) и **Пользователи** (`/admin/users`); в `App.tsx` вложенный роут `/admin` с `Outlet`. На `AdminUsersPage` — кнопки **Заблокировать / Разблокировать** (`PATCH /api/admin/users/{id}`), для своей строки — disabled + toast; после успеха — обновление списка.
+- **Итог для следующих сессий:** Админка единая: переключение вкладок сверху; деталь пользователя — `/admin/users/:id`.

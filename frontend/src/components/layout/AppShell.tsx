@@ -55,7 +55,7 @@ export function AppShell() {
               Настройки
             </NavLink>
             {user?.is_admin ? (
-              <NavLink to="/admin" className={navClass}>
+              <NavLink to="/admin/dashboard" className={navClass}>
                 <Shield className="mr-1 inline size-4" aria-hidden />
                 Админ
               </NavLink>
@@ -93,7 +93,7 @@ export function AppShell() {
             Настройки
           </NavLink>
           {user?.is_admin ? (
-            <NavLink to="/admin" className={navClass}>
+            <NavLink to="/admin/dashboard" className={navClass}>
               <Shield className="mr-1 inline size-4" aria-hidden />
               Админ
             </NavLink>

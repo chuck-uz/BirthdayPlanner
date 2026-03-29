@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Ban, FlaskConical, Shield } from 'lucide-react'
+import { Ban, FlaskConical, LockOpen } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/contexts/ToastContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import type { AdminUserListItem } from '@/types/admin'
 
 export function AdminUsersPage() {
+  const { user: me } = useAuth()
+  const { showToast } = useToast()
   const [rows, setRows] = useState<AdminUserListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [testCount, setTestCount] = useState(1)
+  const [togglingId, setTogglingId] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -43,6 +48,27 @@ export function AdminUsersPage() {
     }
   }
 
+  const toggleBlocked = async (u: AdminUserListItem) => {
+    if (me && u.id === me.id) {
+      showToast('Нельзя заблокировать самого себя')
+      return
+    }
+    setTogglingId(u.id)
+    try {
+      const next = !u.is_blocked
+      await api.patch(`/api/admin/users/${u.id}`, {
+        is_blocked: next,
+      })
+      await loadUsers()
+      showToast(next ? 'Пользователь заблокирован' : 'Пользователь разблокирован')
+      setError(null)
+    } catch {
+      showToast('Не удалось изменить статус')
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
   const createTestUsers = async () => {
     setCreating(true)
     try {
@@ -61,26 +87,10 @@ export function AdminUsersPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <Link
-          to="/"
-          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-zinc-600 transition hover:text-orange-600 dark:text-zinc-400 dark:hover:text-orange-400"
-        >
-          <ArrowLeft className="size-4" aria-hidden />
-          На главную
-        </Link>
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-orange-600/15 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300">
-            <Shield className="size-6" aria-hidden />
-          </div>
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-white">
-              Администрирование
-            </h1>
-            <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
-              Пользователи, блокировка, редактирование данных и вишлистов
-            </p>
-          </div>
-        </div>
+        <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Пользователи</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Блокировка, карточка пользователя и тестовые записи.
+        </p>
       </div>
 
       <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-zinc-300/80 bg-zinc-50/50 p-4 dark:border-zinc-700 dark:bg-zinc-900/30">
@@ -149,7 +159,8 @@ export function AdminUsersPage() {
                 <th className="px-4 py-3">Дата рождения</th>
                 <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3">Тип</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3 text-right">Блокировка</th>
+                <th className="px-4 py-3 text-right">Карточка</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -184,6 +195,27 @@ export function AdminUsersPage() {
                     ) : (
                       <span className="text-xs text-zinc-400">—</span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-1.5 py-1.5 text-xs"
+                      disabled={togglingId === u.id || (me !== null && u.id === me.id)}
+                      onClick={() => void toggleBlocked(u)}
+                    >
+                      {u.is_blocked ? (
+                        <>
+                          <LockOpen className="size-3.5" aria-hidden />
+                          Разблокировать
+                        </>
+                      ) : (
+                        <>
+                          <Ban className="size-3.5" aria-hidden />
+                          Заблокировать
+                        </>
+                      )}
+                    </Button>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link

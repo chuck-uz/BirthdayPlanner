@@ -108,7 +108,12 @@ async def create_birthday_event_and_notify_subscribers(
         return existing
 
     settings = get_settings()
-    if settings.telegram_admin_id is not None or trigger_subscriber is not None:
+    if settings.telegram_admin_id is not None:
+        # Админ-рассылка управляется через веб-панель /admin/dashboard.
+        # Telegram-потоки с кнопками отключены, чтобы не дублировать сценарии.
+        return None
+
+    if trigger_subscriber is not None:
         from birthday_admin_flow import ensure_admin_prompt_for_birthday
 
         await ensure_admin_prompt_for_birthday(

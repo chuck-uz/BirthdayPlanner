@@ -28,6 +28,7 @@ class AdminUserDetailOut(BaseModel):
     full_name: str | None
     birth_date: dt.date | None
     is_blocked: bool
+    is_test: bool
     is_profile_complete: bool
     has_avatar: bool
     is_bot_active: bool
@@ -70,6 +71,39 @@ class AdminCreateTestUsersIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     count: int = Field(default=1, ge=1, le=20)
+
+
+class AdminBirthdayDashboardItemOut(BaseModel):
+    id: int
+    full_name: str | None
+    birth_date: dt.date
+    subscribers_count: int
+    days_until_birthday: int
+    celebration_date: dt.date
+    status: str
+    is_sent: bool
+
+
+class AdminBroadcastLinkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_user_id: int = Field(..., ge=1)
+    group_link: str = Field(..., min_length=10, max_length=2048)
+
+    @field_validator("group_link")
+    @classmethod
+    def validate_group_link(cls, v: str) -> str:
+        link = v.strip()
+        if not link.startswith("https://t.me/"):
+            raise ValueError("Ссылка должна начинаться с https://t.me/")
+        return link
+
+
+class AdminBroadcastLinkOut(BaseModel):
+    target_user_id: int
+    sent_count: int
+    skipped_count: int
+    celebration_date: dt.date
 
 
 class AdminUserPatch(BaseModel):
