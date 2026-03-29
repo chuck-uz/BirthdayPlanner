@@ -21,3 +21,8 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
             detail="admin_required",
         )
     return user
+
+
+async def get_admin_user(user: User = Depends(get_current_user)) -> User:
+    """Совместимое имя зависимости для админ-эндпоинтов."""
+    return await get_current_admin(user)

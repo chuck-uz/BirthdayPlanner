@@ -119,7 +119,7 @@ export function AdminUserDetailPage() {
     return (
       <p className="text-sm text-red-600 dark:text-red-400">
         Некорректная ссылка.{' '}
-        <Link to="/admin" className="underline">
+        <Link to="/admin/users" className="underline">
           К списку
         </Link>
       </p>
@@ -131,7 +131,7 @@ export function AdminUserDetailPage() {
       <div>
         <button
           type="button"
-          onClick={() => navigate('/admin')}
+          onClick={() => navigate('/admin/users')}
           className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-zinc-600 transition hover:text-orange-600 dark:text-zinc-400 dark:hover:text-orange-400"
         >
           <ArrowLeft className="size-4" aria-hidden />

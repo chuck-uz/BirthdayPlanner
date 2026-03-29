@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import html
 import random
 from typing import Annotated
 
@@ -9,16 +11,21 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from admin_access import get_current_admin
+from admin_access import get_admin_user, get_current_admin
+from birthday_utils import days_until_next_birthday, next_birthday_date
 from database import get_db
-from models import Subscription, User, Wishlist
+from models import BirthdayEvent, Subscription, User, Wishlist
 from schemas.admin import (
+    AdminBirthdayDashboardItemOut,
+    AdminBroadcastLinkIn,
+    AdminBroadcastLinkOut,
     AdminCreateTestUsersIn,
     AdminUserDetailOut,
     AdminUserListItemOut,
     AdminUserPatch,
     build_admin_user_detail,
 )
+from telegram_service import telegram_send_message
 from wishlist_storage import delete_wishlist_file_if_exists
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -179,3 +186,115 @@ async def admin_delete_user_wishlist(
     delete_wishlist_file_if_exists(w.photo_path)
     await session.delete(w)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/birthdays", response_model=list[AdminBirthdayDashboardItemOut])
+async def admin_birthdays_dashboard(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _: User = Depends(get_admin_user),
+) -> list[AdminBirthdayDashboardItemOut]:
+    today = dt.date.today()
+    result = await session.execute(select(User).where(User.birth_date.is_not(None), User.is_blocked.is_(False)))
+    users = list(result.scalars().all())
+    rows: list[AdminBirthdayDashboardItemOut] = []
+    for user in users:
+        assert user.birth_date is not None
+        celebration = next_birthday_date(user.birth_date, today)
+        subs = await session.scalar(
+            select(func.count()).select_from(Subscription).where(Subscription.target_user_id == user.id),
+        )
+        event = await session.scalar(
+            select(BirthdayEvent).where(
+                BirthdayEvent.target_user_id == user.id,
+                BirthdayEvent.celebration_date == celebration,
+            ),
+        )
+        is_sent = event is not None and bool(event.invite_link)
+        rows.append(
+            AdminBirthdayDashboardItemOut(
+                id=user.id,
+                full_name=user.full_name,
+                birth_date=user.birth_date,
+                subscribers_count=int(subs or 0),
+                days_until_birthday=days_until_next_birthday(user.birth_date, today),
+                celebration_date=celebration,
+                status="Отправлено" if is_sent else "Не отправлено",
+                is_sent=is_sent,
+            ),
+        )
+    rows.sort(key=lambda x: (x.days_until_birthday, (x.full_name or "").lower(), x.id))
+    return rows
+
+
+@router.post("/broadcast-link", response_model=AdminBroadcastLinkOut)
+async def admin_broadcast_group_link(
+    body: AdminBroadcastLinkIn,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _: User = Depends(get_admin_user),
+) -> AdminBroadcastLinkOut:
+    target = await session.get(User, body.target_user_id)
+    if target is None or target.birth_date is None or bool(getattr(target, "is_blocked", False)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
+
+    recipients = (
+        await session.execute(
+            select(User)
+            .join(Subscription, Subscription.subscriber_id == User.id)
+            .where(Subscription.target_user_id == target.id),
+        )
+    ).scalars().all()
+
+    sent = 0
+    skipped = 0
+    safe_name = html.escape((target.full_name or "").strip() or f"Участник #{target.id}")
+    text = (
+        f"🎁 Секретный чат для обсуждения подарка для <b>{safe_name}</b> готов! "
+        f"Присоединяйтесь: <a href=\"{html.escape(body.group_link, quote=True)}\">ссылка на группу</a>"
+    )
+    reply_markup = {"inline_keyboard": [[{"text": "Присоединиться к чату", "url": body.group_link}]]}
+
+    for sub in recipients:
+        if sub.id == target.id or bool(getattr(sub, "is_blocked", False)):
+            skipped += 1
+            continue
+        ok = await telegram_send_message(
+            sub.telegram_id,
+            text,
+            parse_mode="HTML",
+            reply_markup=reply_markup,
+            disable_web_page_preview=False,
+        )
+        if ok:
+            sent += 1
+        else:
+            skipped += 1
+        await asyncio.sleep(0.05)
+
+    celebration = next_birthday_date(target.birth_date, dt.date.today())
+    existing_event = await session.scalar(
+        select(BirthdayEvent).where(
+            BirthdayEvent.target_user_id == target.id,
+            BirthdayEvent.celebration_date == celebration,
+        ),
+    )
+    if existing_event is None:
+        session.add(
+            BirthdayEvent(
+                target_user_id=target.id,
+                celebration_date=celebration,
+                telegram_chat_id=None,
+                invite_link=body.group_link,
+                used_dm_fallback=False,
+            ),
+        )
+    else:
+        existing_event.invite_link = body.group_link
+        existing_event.used_dm_fallback = False
+    await session.flush()
+
+    return AdminBroadcastLinkOut(
+        target_user_id=target.id,
+        sent_count=sent,
+        skipped_count=skipped,
+        celebration_date=celebration,
+    )
