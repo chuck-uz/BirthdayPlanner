@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Ban, FlaskConical, LockOpen } from 'lucide-react'
+import { Ban, FlaskConical, LockOpen, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/contexts/ToastContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
-import type { AdminUserListItem } from '@/types/admin'
+import type {
+  AdminDeleteAllTestUsersOut,
+  AdminUserListItem,
+} from '@/types/admin'
 
 export function AdminUsersPage() {
   const { user: me } = useAuth()
@@ -14,8 +17,10 @@ export function AdminUsersPage() {
   const [rows, setRows] = useState<AdminUserListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [deletingTests, setDeletingTests] = useState(false)
   const [testCount, setTestCount] = useState(1)
   const [togglingId, setTogglingId] = useState<number | null>(null)
+  const [deletingUserId, setDeletingUserId] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -69,6 +74,27 @@ export function AdminUsersPage() {
     }
   }
 
+  const deleteAllTestUsers = async () => {
+    if (
+      !window.confirm(
+        'Удалить всех тестовых пользователей (is_test)? Подписки и связанные данные будут удалены.',
+      )
+    ) {
+      return
+    }
+    setDeletingTests(true)
+    try {
+      const { data } = await api.delete<AdminDeleteAllTestUsersOut>('/api/admin/users/test')
+      showToast(`Удалено тестовых пользователей: ${data.deleted_count}`)
+      await loadUsers()
+      setError(null)
+    } catch {
+      showToast('Не удалось удалить тестовых пользователей')
+    } finally {
+      setDeletingTests(false)
+    }
+  }
+
   const createTestUsers = async () => {
     setCreating(true)
     try {
@@ -81,6 +107,25 @@ export function AdminUsersPage() {
       setError('Не удалось создать тестовых пользователей.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const deleteUser = async (u: AdminUserListItem) => {
+    if (me && u.id === me.id) {
+      showToast('Нельзя удалить самого себя')
+      return
+    }
+    if (!window.confirm(`Удалить пользователя "${u.full_name ?? `#${u.id}`}"?`)) return
+    setDeletingUserId(u.id)
+    try {
+      await api.delete(`/api/admin/users/${u.id}`)
+      showToast('Пользователь удалён')
+      await loadUsers()
+      setError(null)
+    } catch {
+      showToast('Не удалось удалить пользователя')
+    } finally {
+      setDeletingUserId(null)
     }
   }
 
@@ -128,6 +173,15 @@ export function AdminUsersPage() {
           <Button type="button" disabled={creating} onClick={() => void createTestUsers()}>
             {creating ? 'Создание…' : 'Создать тестовых'}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={deletingTests}
+            onClick={() => void deleteAllTestUsers()}
+            className="border-red-300 text-red-800 hover:bg-red-50 dark:border-red-900 dark:text-red-200 dark:hover:bg-red-950/40"
+          >
+            {deletingTests ? 'Удаление…' : 'Удалить всех тестовых'}
+          </Button>
           <button
             type="button"
             className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
@@ -160,6 +214,7 @@ export function AdminUsersPage() {
                 <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3">Тип</th>
                 <th className="px-4 py-3 text-right">Блокировка</th>
+                <th className="px-4 py-3 text-right">Удаление</th>
                 <th className="px-4 py-3 text-right">Карточка</th>
               </tr>
             </thead>
@@ -215,6 +270,18 @@ export function AdminUsersPage() {
                           Заблокировать
                         </>
                       )}
+                    </Button>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-1.5 py-1.5 text-xs border-red-300 text-red-800 hover:bg-red-50 dark:border-red-900 dark:text-red-200 dark:hover:bg-red-950/40"
+                      disabled={deletingUserId === u.id || (me !== null && u.id === me.id)}
+                      onClick={() => void deleteUser(u)}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden />
+                      {deletingUserId === u.id ? 'Удаление…' : 'Удалить'}
                     </Button>
                   </td>
                   <td className="px-4 py-3 text-right">
