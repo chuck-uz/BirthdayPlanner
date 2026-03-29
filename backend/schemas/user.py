@@ -26,6 +26,7 @@ class UpcomingBirthdayOut(BaseModel):
     birth_date: dt.date
     days_until: int
     subscribed: bool = False
+    has_avatar: bool = False
 
 
 class UserMeOut(BaseModel):
@@ -38,6 +39,7 @@ class UserMeOut(BaseModel):
     is_profile_complete: bool
     has_avatar: bool = False
     avatar_url: str | None = None
+    is_bot_active: bool = False
 
 
 def build_user_me_out(user: User) -> UserMeOut:
@@ -52,6 +54,7 @@ def build_user_me_out(user: User) -> UserMeOut:
         is_profile_complete=name_ok and user.birth_date is not None,
         has_avatar=has_avatar,
         avatar_url=f"/api/users/{user.id}/avatar" if has_avatar else None,
+        is_bot_active=bool(getattr(user, "is_bot_active", False)),
     )
 
 

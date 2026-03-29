@@ -154,7 +154,7 @@ async def get_bot_telegram_user_id() -> int | None:
 async def telegram_set_webhook(webhook_url: str, *, secret_token: str | None) -> bool:
     payload: dict[str, Any] = {
         "url": webhook_url,
-        "allowed_updates": ["callback_query", "my_chat_member"],
+        "allowed_updates": ["callback_query", "my_chat_member", "message"],
     }
     if secret_token:
         payload["secret_token"] = secret_token

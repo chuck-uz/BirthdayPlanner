@@ -6,4 +6,6 @@ export type UserProfile = {
   is_profile_complete: boolean
   has_avatar?: boolean
   avatar_url?: string | null
+  /** Пользователь нажал /start у бота (или getChat доступен). */
+  is_bot_active?: boolean
 }

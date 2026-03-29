@@ -50,6 +50,17 @@ async def lifespan(app: FastAPI):
                     "Could not add users.avatar_path column (migrate manually if needed)",
                     exc_info=True,
                 )
+            try:
+                await conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot_active BOOLEAN NOT NULL DEFAULT false",
+                    ),
+                )
+            except Exception:
+                logger.warning(
+                    "Could not add users.is_bot_active column (migrate manually if needed)",
+                    exc_info=True,
+                )
     start_scheduler()
     base = (settings.telegram_webhook_base_url or "").strip().rstrip("/")
     if base:

@@ -182,3 +182,14 @@
 - **Запрос (суть):** Папка `uploads/avatars`, volume в compose, поле `avatar_path`, `PATCH /api/users/me/avatar`, `GET /api/users/{id}/avatar` с JWT, без StaticFiles на uploads.
 - **Сделано:** **`backend/uploads/avatars/.gitkeep`**, **`avatar_storage.py`** (лимит 5 МБ, JPEG/PNG по magic + Content-Type, UUID-имя, защита путей), **`User.avatar_path`**, миграция **`ALTER users.avatar_path`** в **`main`**, **`ensure_avatars_dir`** при старте. Роуты в **`users.py`**; **`UserMeOut`:** `has_avatar`, `avatar_url`. Compose: **`backend_avatars:/app/uploads/avatars`**. **`python-multipart`**, **`.gitignore`** на файлы в avatars. Тип **`UserProfile`** на фронте расширен опциональными полями.
 - **Итог для следующих сессий:** Выдача только через API; после `docker compose build` пересобрать backend для зависимостей.
+
+### 2026-03-29 — Главная: карточки, Google Календарь, `is_bot_active` и модалка бота
+
+- **Запрос (суть):** Прямоугольные карточки на главной (аватар, ФИО, дата); кнопки Профиль / Вишлист / Подписаться (колокольчик) / Google Календарь; на бэкенде `User.is_bot_active`, обновление при старте бота; на фронте при `is_bot_active === false` — модалка «запустите бота», подписка disabled; ссылка календаря с предзаполнением из карточки.
+- **Сделано:**
+  - **Backend:** `User.is_bot_active` (`Boolean`, default false), миграция в **`main.py`**; при личном **`/start`** в вебхуке — **`telegram_bot_start_handler.handle_telegram_message_for_bot_activity`**; **`GET /api/users/me/telegram-delivery`**: если `getChat` подтверждает доставку — выставить **`is_bot_active = True`**; **`UserMeOut.is_bot_active`**; **`UpcomingBirthdayOut.has_avatar`**; вебхук обрабатывает **`message`** (см. **`telegram_service.setWebhook`** `allowed_updates`).
+  - **Frontend:** **`HomePage`** — макет карточки, ссылки на профиль и `#wishlist`, **`BirthdayNotifyBell`** с **`isBotActive`** и **`onOpenBotHint`**, **`BotStartModal`**, кнопка Google через **`buildGoogleCalendarBirthdayUrl`** / **`nextBirthdayGoogleDates`** в **`birthdayFormat.ts`**; после загрузки telegram-delivery — **`refreshUser()`**.
+  - **`BirthdayNotifyBell`:** подписаться неактивна, если бот не «активен» и пользователь ещё не подписан; ссылка-текст на подсказку.
+  - **`UserProfilePage`:** тот же **`BotStartModal`** / **`isBotActive`**, **`refreshUser`** после delivery; у карточки вишлиста **`id="wishlist"`** + **`scroll-mt-24`** для якоря с главной.
+  - **Типы:** **`UserProfile.is_bot_active`** в **`types/user.ts`**.
+- **Итог для следующих сессий:** Подписка на уведомления по UX завязана на **`me.is_bot_active`**; флаг поднимается **`/start`** у бота или успешным **`getChat`** на delivery; календарь — только клиентская ссылка на `calendar.google.com` с `action=TEMPLATE`.

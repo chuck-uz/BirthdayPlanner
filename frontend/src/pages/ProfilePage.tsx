@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ListPlus, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ListPlus, Trash2, Upload, UserRound } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -7,8 +8,30 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { useAuth } from '@/contexts/AuthContext'
 import type { WishlistItem } from '@/types/publicUser'
 
+function mapAvatarUploadError(detail: unknown): string {
+  const code =
+    typeof detail === 'string'
+      ? detail
+      : Array.isArray(detail) && detail[0] && typeof detail[0] === 'object' && 'msg' in detail[0]
+        ? String((detail[0] as { msg?: string }).msg)
+        : ''
+  const messages: Record<string, string> = {
+    invalid_file_type: 'Нужен файл в формате JPEG или PNG.',
+    file_too_large: 'Размер файла не больше 5 МБ.',
+    empty_file: 'Файл пустой — выберите другое изображение.',
+    invalid_image_payload: 'Файл не похож на корректное изображение JPEG или PNG.',
+    content_type_mismatch: 'Тип файла не совпадает с содержимым.',
+  }
+  return messages[code] ?? 'Не удалось загрузить фото. Попробуйте другой файл.'
+}
+
 export function ProfilePage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const [avatarBust, setAvatarBust] = useState(0)
+  const [avatarImgFailed, setAvatarImgFailed] = useState(false)
   const [items, setItems] = useState<WishlistItem[]>([])
   const [wishLoading, setWishLoading] = useState(true)
   const [draft, setDraft] = useState('')
@@ -29,6 +52,49 @@ export function ProfilePage() {
   useEffect(() => {
     void loadWishlists()
   }, [loadWishlists])
+
+  useEffect(() => {
+    setAvatarImgFailed(false)
+  }, [user?.has_avatar, user?.id, avatarBust])
+
+  const openAvatarPicker = () => {
+    setAvatarError(null)
+    avatarInputRef.current?.click()
+  }
+
+  const onAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !user) return
+    setAvatarError(null)
+    setAvatarUploading(true)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      const res = await fetch('/api/users/me/avatar', {
+        method: 'PATCH',
+        credentials: 'include',
+        body,
+      })
+      if (!res.ok) {
+        let detail: unknown
+        try {
+          detail = (await res.json()) as { detail?: unknown }
+          detail = (detail as { detail?: unknown }).detail
+        } catch {
+          detail = undefined
+        }
+        setAvatarError(mapAvatarUploadError(detail))
+        return
+      }
+      await refreshUser()
+      setAvatarBust((n) => n + 1)
+    } catch {
+      setAvatarError('Сеть недоступна или сервер не ответил.')
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
 
   const addItem = async () => {
     const title = draft.trim()
@@ -67,9 +133,72 @@ export function ProfilePage() {
         <Card>
           <CardHeader>
             <CardTitle>Профиль</CardTitle>
-            <CardDescription>Данные из Telegram и учётной записи</CardDescription>
           </CardHeader>
-          <dl className="space-y-3 text-sm">
+          <div className="border-b border-zinc-200/80 pb-6 dark:border-zinc-800">
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+              className="sr-only"
+              aria-label="Выбор файла аватарки"
+              onChange={(ev) => void onAvatarFile(ev)}
+              disabled={avatarUploading}
+            />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="relative shrink-0">
+                {user?.has_avatar && !avatarImgFailed ? (
+                  <img
+                    src={`/api/users/${user.id}/avatar?v=${avatarBust}`}
+                    alt=""
+                    className="size-24 rounded-2xl border border-zinc-200/80 object-cover shadow-sm dark:border-zinc-700"
+                    onError={() => setAvatarImgFailed(true)}
+                  />
+                ) : (
+                  <div
+                    className="flex size-24 items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-100/80 text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-500"
+                    aria-hidden
+                  >
+                    <UserRound className="size-12" strokeWidth={1.25} />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Выберите файл с устройства: <strong className="font-medium text-zinc-800 dark:text-zinc-200">JPEG или PNG</strong>, не больше{' '}
+                  <strong className="font-medium text-zinc-800 dark:text-zinc-200">5 МБ</strong>. Аватарка не подтягивается из Telegram автоматически.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 py-2 text-xs"
+                  onClick={openAvatarPicker}
+                  disabled={avatarUploading}
+                >
+                  <Upload className="size-4" aria-hidden />
+                  {user?.has_avatar ? 'Сменить фото' : 'Загрузить фото'}
+                </Button>
+                {avatarUploading ? (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Загрузка…</p>
+                ) : null}
+                {avatarError ? (
+                  <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                    {avatarError}
+                  </p>
+                ) : null}
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Имя и дату рождения можно изменить на{' '}
+                  <Link
+                    to="/setup-profile"
+                    className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
+                  >
+                    странице настройки профиля
+                  </Link>
+                  .
+                </p>
+              </div>
+            </div>
+          </div>
+          <dl className="space-y-3 pt-4 text-sm">
             <div className="flex justify-between gap-4 border-b border-zinc-200/80 py-2 dark:border-zinc-800">
               <dt className="text-zinc-500 dark:text-zinc-400">Имя</dt>
               <dd className="font-medium text-zinc-900 dark:text-zinc-100">

@@ -8,15 +8,15 @@ alwaysApply: false
 
 ## Точка входа
 
-- `main.py` — lifespan: `Base.metadata.create_all`, CORS `allow_credentials=True`, origins: **`http://127.0.0.1`** / **`http://localhost`** (порт 80) и legacy **5173/5174** для локального Vite
-- Роутеры: `telegram_auth`, `users`
-- **Alembic нет** — схема через `create_all`
+- `main.py` — lifespan: `Base.metadata.create_all`, Postgres `ALTER` для новых колонок (**`is_bot_active`**, админ-промпты и т.д.), CORS `allow_credentials=True`, origins: **`http://127.0.0.1`** / **`http://localhost`** (порт 80) и legacy **5173/5174** для локального Vite; планировщик APScheduler (напоминания о ДР); при настройках — **`telegram_set_webhook`**
+- Роутеры: **`telegram_auth`**, **`users`**, **`telegram_webhook`** (`POST /api/telegram/webhook`)
+- **Alembic нет** — схема через `create_all` + явные `ALTER TABLE … IF NOT EXISTS` где нужно
 
 ## Модули
 
 - `config.py` — `pydantic-settings`, `get_settings()` + `@lru_cache` → перезапуск после `.env`
 - `database.py` — async engine, `get_db()` с commit/rollback
-- `models.py` — `User` (telegram_id unique, nullable full_name/birth_date), `Wishlist` (FK user CASCADE)
+- `models.py` — `User` (telegram_id unique, nullable full_name/birth_date, **`avatar_path`**, **`is_bot_active`**), `Wishlist`, `Subscription`, `BirthdayEvent`, `AdminBirthdayPrompt`, …
 - `auth.py` — Telegram HMAC-SHA256 (secret = SHA256(bot_token)), JWT (`python-jose`), `TelegramAuthError`
 - `deps.py` — `get_current_user`: cookie `JWT_COOKIE_NAME` или `Authorization: Bearer`
 - `redirects.py` — `safe_browser_redirect`, `resolve_post_login_redirect` (хосты только `127.0.0.1`, `localhost`)
@@ -27,11 +27,15 @@ alwaysApply: false
 - `GET /health` → `{ "status": "ok" }`
 - `GET /api/auth/telegram` — декоратор **`response_model=None`** (обязательно: иначе FastAPI падает на `RedirectResponse | HTMLResponse` → контейнер в restart → **502**). Callback Telegram; в проверке hash **не участвуют** ключи `next`, `popup`; успех → JWT HttpOnly; обычный режим → 302 на `next` или `FRONTEND_DEFAULT_URL`; **`popup` truthy** (`1|true|yes|on`) → **HTML 200** с **`location.replace(redirect)`** в окне popup (без `postMessage`), не 302
 - `POST /api/auth/logout`
-- `GET /api/users/me`
+- `GET /api/users/me` — в т.ч. **`is_bot_active`**, **`has_avatar`**
 - `PATCH /api/users/me` — `UserProfileUpdate` (full_name минимум 2 слова, birth_date)
+- `PATCH /api/users/me/avatar`, `GET /api/users/{id}/avatar` (JWT), `GET /api/users/{id}` (публичный профиль + вишлист)
+- `GET /api/users/birthdays/upcoming`, подписки `GET/POST/DELETE …/users/{id}/subscription`, `GET /api/users/me/telegram-delivery`
 
 **Нет** `GET /api/auth/me` — клиент использует `/api/users/me`.
 
 ## Telegram
 
 Новый пользователь после логина: `full_name=None`, `birth_date=None`. Исключённые из подписи query-ключи: **`next`**, **`popup`**.
+
+**Активность бота у пользователя:** `is_bot_active` выставляется в **`true`** при обработке личного **`/start`** во входящем **`message`** вебхука (**`telegram_bot_start_handler`**) и при успешной проверке **`getChat`** в **`GET /api/users/me/telegram-delivery`** (если ранее было `false`).

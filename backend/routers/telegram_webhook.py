@@ -7,6 +7,7 @@ import logging
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from birthday_admin_flow import handle_telegram_callback_query, handle_telegram_my_chat_member
+from telegram_bot_start_handler import handle_telegram_message_for_bot_activity
 from config import get_settings
 from database import async_session_maker
 
@@ -32,6 +33,8 @@ async def telegram_webhook(
                 await handle_telegram_callback_query(session, body["callback_query"])
             elif "my_chat_member" in body:
                 await handle_telegram_my_chat_member(session, body["my_chat_member"])
+            elif "message" in body:
+                await handle_telegram_message_for_bot_activity(session, body["message"])
             await session.commit()
     except Exception:
         logger.exception("telegram_webhook handler failed update_id=%s", body.get("update_id"))
