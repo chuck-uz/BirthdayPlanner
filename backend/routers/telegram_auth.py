@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import TelegramAuthError, create_access_token, verify_telegram_login_hash
-from config import get_settings
+from config import Settings, get_settings
 from database import get_db
+from deps import get_current_user
 from models import User
+from redirects import safe_browser_redirect
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -38,13 +40,28 @@ def _same_site_cookie(value: str) -> Literal["lax", "strict", "none"]:
     return "lax"
 
 
+def _attach_auth_cookie(response: Response, token: str, settings: Settings) -> None:
+    max_age = settings.jwt_expire_minutes * 60
+    response.set_cookie(
+        key=settings.jwt_cookie_name,
+        value=token,
+        httponly=True,
+        max_age=max_age,
+        secure=settings.cookie_secure,
+        samesite=_same_site_cookie(settings.cookie_samesite),
+        path="/",
+    )
+
+
 @router.get("/telegram")
 async def telegram_login(
     request: Request,
     session: AsyncSession = Depends(get_db),
-) -> JSONResponse:
+) -> JSONResponse | RedirectResponse:
     settings = get_settings()
-    raw = _query_params_as_str_dict(request)
+    raw_all = _query_params_as_str_dict(request)
+    next_url = safe_browser_redirect(raw_all.get("next"))
+    raw = {k: v for k, v in raw_all.items() if k != "next"}
 
     try:
         verify_telegram_login_hash(
@@ -89,6 +106,11 @@ async def telegram_login(
         extra_claims={"telegram_id": telegram_id},
     )
 
+    if next_url:
+        redirect = RedirectResponse(url=next_url, status_code=status.HTTP_302_FOUND)
+        _attach_auth_cookie(redirect, token, settings)
+        return redirect
+
     body = {
         "access_token": token,
         "token_type": "bearer",
@@ -96,14 +118,28 @@ async def telegram_login(
         "telegram_id": telegram_id,
     }
     response = JSONResponse(content=body, status_code=status.HTTP_200_OK)
-    max_age = settings.jwt_expire_minutes * 60
-    response.set_cookie(
+    _attach_auth_cookie(response, token, settings)
+    return response
+
+
+@router.get("/me")
+async def auth_me(user: User = Depends(get_current_user)) -> dict:
+    return {
+        "id": user.id,
+        "telegram_id": user.telegram_id,
+        "full_name": user.full_name,
+        "birth_date": user.birth_date.isoformat() if user.birth_date else None,
+    }
+
+
+@router.post("/logout")
+async def auth_logout(response: Response) -> dict:
+    settings = get_settings()
+    response.delete_cookie(
         key=settings.jwt_cookie_name,
-        value=token,
-        httponly=True,
-        max_age=max_age,
+        path="/",
         secure=settings.cookie_secure,
         samesite=_same_site_cookie(settings.cookie_samesite),
-        path="/",
+        httponly=True,
     )
-    return response
+    return {"ok": True}

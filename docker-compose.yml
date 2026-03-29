@@ -62,6 +62,24 @@ services:
     networks:
       - birthday_net
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: birthday_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+      VITE_TELEGRAM_AUTH_URL: http://127.0.0.1:8000/api/auth/telegram
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    networks:
+      - birthday_net
+
 # Описание сетей: бэкенд и база будут видеть друг друга здесь
 networks:
   birthday_net:
