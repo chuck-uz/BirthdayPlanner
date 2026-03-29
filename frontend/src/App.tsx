@@ -7,6 +7,7 @@ import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { SetupProfilePage } from '@/pages/SetupProfilePage'
+import { UserProfilePage } from '@/pages/UserProfilePage'
 
 export default function App() {
   return (
@@ -35,6 +36,14 @@ export default function App() {
             element={
               <ProtectedRoute requireCompleteProfile>
                 <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users/:userId"
+            element={
+              <ProtectedRoute requireCompleteProfile>
+                <UserProfilePage />
               </ProtectedRoute>
             }
           />
