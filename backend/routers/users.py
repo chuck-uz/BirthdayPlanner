@@ -53,8 +53,13 @@ async def get_me(user: User = Depends(get_current_user)) -> UserMeOut:
 
 
 @router.get("/me/telegram-delivery", response_model=TelegramDeliveryOut)
-async def my_telegram_delivery(user: User = Depends(get_current_user)) -> TelegramDeliveryOut:
+async def my_telegram_delivery(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user: User = Depends(get_current_user),
+) -> TelegramDeliveryOut:
     can = await telegram_user_can_receive_bot_messages(user.telegram_id)
+    if can and not user.is_bot_active:
+        user.is_bot_active = True
     bot = await get_bot_username()
     return TelegramDeliveryOut(can_receive_bot_messages=can, bot_username=bot)
 
@@ -127,6 +132,7 @@ async def upcoming_birthdays(
     for u in rows:
         assert u.birth_date is not None
         d = days_until_next_birthday(u.birth_date)
+        has_av = bool(getattr(u, "avatar_path", None) and str(u.avatar_path).strip())
         items.append(
             UpcomingBirthdayOut(
                 user_id=u.id,
@@ -134,6 +140,7 @@ async def upcoming_birthdays(
                 birth_date=u.birth_date,
                 days_until=d,
                 subscribed=u.id in subscribed_ids,
+                has_avatar=has_av,
             )
         )
     items.sort(key=lambda x: (x.days_until, x.user_id))

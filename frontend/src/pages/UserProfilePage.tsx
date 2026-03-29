@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, CalendarDays, Gift, ListChecks } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
+import { BotStartModal } from '@/components/bot/BotStartModal'
 import { BirthdayNotifyBell } from '@/components/birthday/BirthdayNotifyBell'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
@@ -18,12 +19,13 @@ function displayName(p: UserPublicProfile): string {
 
 export function UserProfilePage() {
   const { userId } = useParams<{ userId: string }>()
-  const { user: me } = useAuth()
+  const { user: me, refreshUser } = useAuth()
   const [profile, setProfile] = useState<UserPublicProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [delivery, setDelivery] = useState<TelegramDelivery | null>(null)
   const [subscribed, setSubscribed] = useState(false)
+  const [botModalOpen, setBotModalOpen] = useState(false)
 
   const idNum = userId ? Number.parseInt(userId, 10) : NaN
 
@@ -86,6 +88,7 @@ export function UserProfilePage() {
         if (!cancelled) {
           setDelivery(dRes.data)
           setSubscribed(sRes.data.subscribed)
+          void refreshUser()
         }
       } catch {
         if (!cancelled) {
@@ -97,10 +100,17 @@ export function UserProfilePage() {
     return () => {
       cancelled = true
     }
-  }, [profile, isSelf])
+  }, [profile, isSelf, refreshUser])
+
+  const isBotActive = me?.is_bot_active ?? false
 
   return (
     <div className="flex flex-col gap-8">
+      <BotStartModal
+        open={botModalOpen}
+        onClose={() => setBotModalOpen(false)}
+        botUsername={delivery?.bot_username ?? null}
+      />
       <div>
         <Link
           to="/"
@@ -128,8 +138,10 @@ export function UserProfilePage() {
                   targetUserId={profile.id}
                   subscribed={subscribed}
                   delivery={delivery}
+                  isBotActive={isBotActive}
                   onSubscribedChange={setSubscribed}
                   onDeliveryPatch={patchDelivery}
+                  onOpenBotHint={() => setBotModalOpen(true)}
                 />
               ) : null}
             </div>
@@ -155,7 +167,7 @@ export function UserProfilePage() {
       ) : null}
 
       {profile && !loading ? (
-        <Card className="border-white/50 dark:border-white/10">
+        <Card id="wishlist" className="scroll-mt-24 border-white/50 dark:border-white/10">
           <CardHeader>
             <div className="mb-2 flex items-center gap-2 text-orange-600 dark:text-orange-400">
               <ListChecks className="size-5" aria-hidden />

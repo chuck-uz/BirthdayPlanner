@@ -30,21 +30,23 @@ alwaysApply: true
 
 ## Пользователи и профиль
 
-- **Модели:** `User` (telegram_id, full_name, birth_date, **`avatar_path`**), `Wishlist`, **`Subscription`**, **`BirthdayEvent`**, **`AdminBirthdayPrompt`** (`prompt_recipient_telegram_id` — кому ушли кнопки: админ из env или подписчик при отсутствии env).
+- **Модели:** `User` (telegram_id, full_name, birth_date, **`avatar_path`**, **`is_bot_active`** — пользователь нажал `/start` у бота или подтверждён `getChat` при проверке доставки), `Wishlist`, **`Subscription`**, **`BirthdayEvent`**, **`AdminBirthdayPrompt`** (`prompt_recipient_telegram_id` — кому ушли кнопки: админ из env или подписчик при отсутствии env).
 - **Профиль:** `PATCH /api/users/me` (ФИО + дата рождения, валидация). **`PATCH /api/users/me/avatar`** — загрузка JPEG/PNG до 5 МБ (UUID-имя), **`GET /api/users/{id}/avatar`** — выдача файла только с JWT; **`StaticFiles` для `uploads/` нет**.
 - **Аватары:** файлы в **`backend/uploads/avatars/`**, логика **`avatar_storage.py`** (сигнатуры файлов, лимит размера, защита от path traversal).
 - **Вишлист:** `GET/POST/DELETE /api/users/me/wishlists` — данные в БД; **`ProfilePage`** синхронизирован с API.
-- **Главная:** `GET /api/users/birthdays/upcoming` — реальные пользователи с `birth_date`, поле **`subscribed`** для текущего пользователя.
+- **Главная:** `GET /api/users/birthdays/upcoming` — реальные пользователи с `birth_date`, поля **`subscribed`**, **`has_avatar`** для карточки; UI: прямоугольные карточки (аватар **`GET /api/users/{id}/avatar`**, ФИО, дата), ссылки **Профиль** / **Вишлист** (`#wishlist` на **`UserProfilePage`**), **`BirthdayNotifyBell`** (колокольчик), кнопка **Google Календарь** — ссылка `render?action=TEMPLATE` из **`buildGoogleCalendarBirthdayUrl`** (`frontend/src/lib/birthdayFormat.ts`).
 - **Профиль именинника:** `GET /api/users/{id}` (без telegram_id чужого), вишлист только чтение; роут **`/users/:userId`**, карточки на главной — ссылки.
 
 ## Подписки и уведомления о ДР
 
-- **API:** `GET/POST/DELETE /api/users/{id}/subscription`, `GET /api/users/me/telegram-delivery` (getChat + bot username).
+- **API:** `GET/POST/DELETE /api/users/{id}/subscription`, `GET /api/users/me/telegram-delivery` (getChat + bot username; при успешной доставке — **`user.is_bot_active = True`**).
+- **Бот / старт:** вебхук обрабатывает **`message`**; при **`/start`** в личке — **`telegram_bot_start_handler`** выставляет **`is_bot_active`** у пользователя по **`telegram_id`**.
+- **`GET /api/users/me`:** в ответе **`is_bot_active`** (**`UserMeOut`**); фронт после загрузки delivery вызывает **`refreshUser()`**, чтобы синхронизировать флаг.
 - **При новой подписке (`POST …/subscription`):** подтверждение в Telegram; при заданном **`TELEGRAM_ADMIN_ID`** запрос с кнопками админу — **при любой** новой подписке (без ограничения «только ≤ N дней до ДР»). Без **`TELEGRAM_ADMIN_ID`** — окно N дней и кнопки подписчику. Дальше **`BirthdayEvent`** / **`createChat`**. Повторный POST без новой подписки не шлёт сообщения.
 - **Планировщик:** **09:00** (`SCHEDULER_TIMEZONE`), за **`BIRTHDAY_NOTIFY_DAYS_BEFORE`** дней — **`run_daily_birthday_reminders`** → та же ветка **`create_birthday_event_and_notify_subscribers`** (админ или авто). **Именинник** сообщений не получает.
 - **Ручная группа (кнопки в боте):** **`birthday_admin_flow.py`** — при **подписке** запрос с кнопками уходит в **`TELEGRAM_ADMIN_ID`**, если задан, иначе **подписавшемуся** (без env кнопки всё равно работают). Ежедневная задача без env — только попытка **`createChat`**. Webhook **`POST /api/telegram/webhook`**, колонка **`prompt_recipient_telegram_id`** для проверки callback.
 - **Telegram без админа:** только **`try_create_birthday_group`**; при ошибке API подписчикам **не** шлётся текст «не удалось создать группу» — в лог warning и нужен **`TELEGRAM_ADMIN_ID`** для ручной группы.
-- **Фронт:** **`BirthdayNotifyBell`** на главной и в профиле друга; предупреждение, если пользователь не нажал Start у бота (`t.me/{username}`).
+- **Фронт:** **`BirthdayNotifyBell`** на главной и в профиле друга; если **`me.is_bot_active`** ложно и подписки ещё нет — кнопка подписки **disabled**, текст-ссылка и модалка **`BotStartModal`** (`t.me/{bot_username}` из delivery).
 
 ## Vite / фронт dev
 
@@ -72,3 +74,4 @@ alwaysApply: true
 | 2026-03-29 | Подписка пользователя с **`telegram_id == TELEGRAM_ADMIN_ID`:** запрос на группу и вне окна N дней; **`trigger_subscriber`** + flush в админ-потоке. |
 | 2026-03-29 | Ручной поток при подписке без **`TELEGRAM_ADMIN_ID`** — кнопки подписчику; **`prompt_recipient_telegram_id`**; миграция колонки в **`main`**. |
 | 2026-03-29 | Аватары: **`users.avatar_path`**, **`PATCH /api/users/me/avatar`**, **`GET /api/users/{id}/avatar`**, volume **`backend_avatars`**, **`python-multipart`**. |
+| 2026-03-29 | Главная: карточки с аватаром и действиями; **`is_bot_active`**, вебхук **`/start`**, синхронизация через **`telegram-delivery`**; **`BotStartModal`**, Google Calendar URL на фронте; **`UpcomingBirthdayOut.has_avatar`**. |
