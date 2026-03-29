@@ -4,6 +4,27 @@ import datetime as dt
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from models import User
+from schemas.wishlist import WishlistItemOut
+
+
+class UserPublicProfileOut(BaseModel):
+    """Профиль участника для просмотра с вишлистом (без telegram_id)."""
+
+    id: int
+    full_name: str | None
+    birth_date: dt.date | None
+    wishlists: list[WishlistItemOut]
+
+
+class UpcomingBirthdayOut(BaseModel):
+    """Пользователь с заполненной датой рождения для списка на главной."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: int
+    full_name: str | None
+    birth_date: dt.date
+    days_until: int
 
 
 class UserMeOut(BaseModel):

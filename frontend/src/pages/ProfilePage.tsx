@@ -1,32 +1,55 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ListPlus, Trash2 } from 'lucide-react'
 
+import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
-
-type WishItem = { id: string; title: string }
+import type { WishlistItem } from '@/types/publicUser'
 
 export function ProfilePage() {
   const { user } = useAuth()
-  const [items, setItems] = useState<WishItem[]>([
-    { id: 'w1', title: 'Книга про TypeScript' },
-    { id: 'w2', title: 'Подписка на сервис с плейлистами' },
-  ])
+  const [items, setItems] = useState<WishlistItem[]>([])
+  const [wishLoading, setWishLoading] = useState(true)
   const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  const addItem = () => {
+  const loadWishlists = useCallback(async () => {
+    setWishLoading(true)
+    try {
+      const { data } = await api.get<WishlistItem[]>('/api/users/me/wishlists')
+      setItems(data)
+    } catch {
+      setItems([])
+    } finally {
+      setWishLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadWishlists()
+  }, [loadWishlists])
+
+  const addItem = async () => {
     const title = draft.trim()
-    if (!title) return
-    setItems((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), title },
-    ])
-    setDraft('')
+    if (!title || saving) return
+    setSaving(true)
+    try {
+      const { data } = await api.post<WishlistItem>('/api/users/me/wishlists', { title })
+      setItems((prev) => [data, ...prev])
+      setDraft('')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const remove = (id: string) => {
-    setItems((prev) => prev.filter((x) => x.id !== id))
+  const remove = async (id: number) => {
+    try {
+      await api.delete(`/api/users/me/wishlists/${id}`)
+      setItems((prev) => prev.filter((x) => x.id !== id))
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
@@ -36,7 +59,7 @@ export function ProfilePage() {
           Личный кабинет
         </h1>
         <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-          Профиль из сессии и вишлист (локально до API вишлистов).
+          Профиль из сессии и вишлист — его видят другие участники в вашем профиле.
         </p>
       </div>
 
@@ -71,46 +94,58 @@ export function ProfilePage() {
         <Card>
           <CardHeader>
             <CardTitle>Вишлист</CardTitle>
-            <CardDescription>Желания для друзей (демо в интерфейсе)</CardDescription>
+            <CardDescription>Желания для друзей</CardDescription>
           </CardHeader>
           <div className="flex flex-col gap-3">
             <div className="flex gap-2">
               <input
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addItem()}
+                onKeyDown={(e) => e.key === 'Enter' && void addItem()}
                 placeholder="Новый пункт…"
-                className="flex-1 rounded-xl border border-zinc-200/80 bg-white/60 px-3 py-2 text-sm text-zinc-900 shadow-inner outline-none ring-orange-500/25 placeholder:text-zinc-400 focus:border-orange-500 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950/40 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+                disabled={saving}
+                className="flex-1 rounded-xl border border-zinc-200/80 bg-white/60 px-3 py-2 text-sm text-zinc-900 shadow-inner outline-none ring-orange-500/25 placeholder:text-zinc-400 focus:border-orange-500 focus:ring-2 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950/40 dark:text-zinc-100 dark:placeholder:text-zinc-500"
               />
-              <Button type="button" onClick={addItem} className="shrink-0 gap-1">
+              <Button
+                type="button"
+                onClick={() => void addItem()}
+                disabled={saving}
+                className="shrink-0 gap-1"
+              >
                 <ListPlus className="size-4" aria-hidden />
                 Добавить
               </Button>
             </div>
-            <ul className="space-y-2">
-              {items.length === 0 ? (
-                <li className="rounded-xl border border-dashed border-zinc-300/80 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                  Пока пусто — добавьте первый пункт.
-                </li>
-              ) : (
-                items.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center justify-between gap-2 rounded-xl border border-white/40 bg-white/40 px-3 py-2.5 text-sm dark:border-white/10 dark:bg-zinc-950/30"
-                  >
-                    <span className="text-zinc-800 dark:text-zinc-200">{item.title}</span>
-                    <button
-                      type="button"
-                      onClick={() => remove(item.id)}
-                      className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
-                      aria-label="Удалить"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
+            {wishLoading ? (
+              <div className="rounded-xl border border-zinc-200/60 py-10 text-center text-sm text-zinc-500 dark:border-zinc-800">
+                Загрузка…
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {items.length === 0 ? (
+                  <li className="rounded-xl border border-dashed border-zinc-300/80 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                    Пока пусто — добавьте первый пункт.
                   </li>
-                ))
-              )}
-            </ul>
+                ) : (
+                  items.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 rounded-xl border border-white/40 bg-white/40 px-3 py-2.5 text-sm dark:border-white/10 dark:bg-zinc-950/30"
+                    >
+                      <span className="text-zinc-800 dark:text-zinc-200">{item.title}</span>
+                      <button
+                        type="button"
+                        onClick={() => void remove(item.id)}
+                        className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+                        aria-label="Удалить"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
           </div>
         </Card>
       </div>
