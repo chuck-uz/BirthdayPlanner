@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth import TelegramAuthError, create_access_token, verify_telegram_login_hash
 from config import Settings, get_settings
 from database import get_db
-from deps import get_current_user
 from models import User
 from redirects import safe_browser_redirect
 
@@ -19,18 +18,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 def _query_params_as_str_dict(request: Request) -> dict[str, str]:
     return {k: str(v) for k, v in request.query_params.multi_items()}
-
-
-def _full_name_from_telegram(data: dict[str, str]) -> str | None:
-    first = (data.get("first_name") or "").strip()
-    last = (data.get("last_name") or "").strip()
-    username = (data.get("username") or "").strip()
-    combined = " ".join(p for p in (first, last) if p).strip()
-    if combined:
-        return combined
-    if username:
-        return f"@{username}"
-    return None
 
 
 def _same_site_cookie(value: str) -> Literal["lax", "strict", "none"]:
@@ -89,16 +76,12 @@ async def telegram_login(
             detail="invalid id",
         ) from exc
 
-    full_name = _full_name_from_telegram(raw)
-
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user = result.scalar_one_or_none()
     if user is None:
-        user = User(telegram_id=telegram_id, full_name=full_name)
+        user = User(telegram_id=telegram_id, full_name=None, birth_date=None)
         session.add(user)
         await session.flush()
-    elif full_name is not None:
-        user.full_name = full_name
 
     token = create_access_token(
         str(user.id),
@@ -120,16 +103,6 @@ async def telegram_login(
     response = JSONResponse(content=body, status_code=status.HTTP_200_OK)
     _attach_auth_cookie(response, token, settings)
     return response
-
-
-@router.get("/me")
-async def auth_me(user: User = Depends(get_current_user)) -> dict:
-    return {
-        "id": user.id,
-        "telegram_id": user.telegram_id,
-        "full_name": user.full_name,
-        "birth_date": user.birth_date.isoformat() if user.birth_date else None,
-    }
 
 
 @router.post("/logout")

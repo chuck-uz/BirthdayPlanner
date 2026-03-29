@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import models  # noqa: F401
 from database import Base, engine
 from routers.telegram_auth import router as telegram_auth_router
+from routers.users import router as users_router
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(telegram_auth_router)
+app.include_router(users_router)
 
 
 @app.get("/health")
