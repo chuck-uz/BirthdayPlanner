@@ -8,15 +8,16 @@ alwaysApply: false
 
 ## Точка входа
 
-- `main.py` — lifespan: `Base.metadata.create_all`, Postgres `ALTER` для новых колонок (**`is_bot_active`**, админ-промпты и т.д.), CORS `allow_credentials=True`, origins: **`http://127.0.0.1`** / **`http://localhost`** (порт 80) и legacy **5173/5174** для локального Vite; планировщик APScheduler (напоминания о ДР); при настройках — **`telegram_set_webhook`**
-- Роутеры: **`telegram_auth`**, **`users`**, **`telegram_webhook`** (`POST /api/telegram/webhook`)
+- `main.py` — lifespan: `Base.metadata.create_all`, Postgres `ALTER` для новых колонок (**`is_bot_active`**, админ-промпты, колонки **`wishlists`** и т.д.), **`ensure_avatars_dir`** + **`ensure_wishlist_dir`**, CORS `allow_credentials=True`, origins: **`http://127.0.0.1`** / **`http://localhost`** (порт 80) и legacy **5173/5174** для локального Vite; планировщик APScheduler (напоминания о ДР); при настройках — **`telegram_set_webhook`**
+- Роутеры: **`telegram_auth`**, **`users`**, **`wishlists`** (`GET /api/wishlists/{item_id}/photo`), **`telegram_webhook`** (`POST /api/telegram/webhook`)
 - **Alembic нет** — схема через `create_all` + явные `ALTER TABLE … IF NOT EXISTS` где нужно
 
 ## Модули
 
 - `config.py` — `pydantic-settings`, `get_settings()` + `@lru_cache` → перезапуск после `.env`
 - `database.py` — async engine, `get_db()` с commit/rollback
-- `models.py` — `User` (telegram_id unique, nullable full_name/birth_date, **`avatar_path`**, **`is_bot_active`**), `Wishlist`, `Subscription`, `BirthdayEvent`, `AdminBirthdayPrompt`, …
+- `models.py` — `User` (…), **`Wishlist`** (**`title`**, **`description`**, **`link_url`**, **`photo_path`**), `Subscription`, `BirthdayEvent`, `AdminBirthdayPrompt`, …
+- **`wishlist_storage.py`** — загрузка JPEG/PNG (до 5 МБ), ресайз **Pillow** до 800px по длинной стороне, пути только под **`uploads/wishlist/`**; **`avatar_storage.py`** — аватары (без общего StaticFiles на `uploads/`)
 - `auth.py` — Telegram HMAC-SHA256 (secret = SHA256(bot_token)), JWT (`python-jose`), `TelegramAuthError`
 - `deps.py` — `get_current_user`: cookie `JWT_COOKIE_NAME` или `Authorization: Bearer`
 - `redirects.py` — `safe_browser_redirect`, `resolve_post_login_redirect` (хосты только `127.0.0.1`, `localhost`)
@@ -29,7 +30,8 @@ alwaysApply: false
 - `POST /api/auth/logout`
 - `GET /api/users/me` — в т.ч. **`is_bot_active`**, **`has_avatar`**
 - `PATCH /api/users/me` — `UserProfileUpdate` (full_name минимум 2 слова, birth_date)
-- `PATCH /api/users/me/avatar`, `GET /api/users/{id}/avatar` (JWT), `GET /api/users/{id}` (публичный профиль + вишлист)
+- `PATCH /api/users/me/avatar`, `GET /api/users/{id}/avatar` (JWT), `GET /api/users/{id}` (публичный профиль + вишлист **`WishlistItemOut`**)
+- Вишлист своего пользователя: **`GET/POST/PATCH/DELETE /api/users/me/wishlists`** — создание/правка через **`multipart/form-data`** (опционально файл фото); **`GET /api/wishlists/{item_id}/photo`** — файл фото (JWT, без прямого доступа к папке)
 - `GET /api/users/birthdays/upcoming`, подписки `GET/POST/DELETE …/users/{id}/subscription`, `GET /api/users/me/telegram-delivery`
 
 **Нет** `GET /api/auth/me` — клиент использует `/api/users/me`.

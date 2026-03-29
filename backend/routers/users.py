@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +21,7 @@ from birthday_utils import days_until_next_birthday
 from database import get_db
 from deps import get_current_user
 from models import Subscription, User, Wishlist
+from pydantic import ValidationError
 from schemas.subscription import SubscriptionStateOut, TelegramDeliveryOut
 from schemas.user import (
     UpcomingBirthdayOut,
@@ -29,8 +30,14 @@ from schemas.user import (
     UserPublicProfileOut,
     build_user_me_out,
 )
-from schemas.wishlist import WishlistCreate, WishlistItemOut
+from schemas.wishlist import WishlistItemOut, build_wishlist_item_out, parse_optional_link_url
 from telegram_service import get_bot_username, telegram_user_can_receive_bot_messages
+from wishlist_storage import (
+    delete_wishlist_file_if_exists,
+    process_and_resize_wishlist_image,
+    read_raw_upload,
+    save_wishlist_photo_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +50,7 @@ def _public_profile_from_user(user: User) -> UserPublicProfileOut:
         id=user.id,
         full_name=user.full_name,
         birth_date=user.birth_date,
-        wishlists=[WishlistItemOut.model_validate(w) for w in wishlists],
+        wishlists=[build_wishlist_item_out(w) for w in wishlists],
     )
 
 
@@ -75,22 +82,95 @@ async def list_my_wishlists(
         .order_by(Wishlist.created_at.desc()),
     )
     rows = result.scalars().all()
-    return [WishlistItemOut.model_validate(w) for w in rows]
+    return [build_wishlist_item_out(w) for w in rows]
+
+
+def _normalize_description(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    s = raw.strip()
+    return s or None
 
 
 @router.post("/me/wishlists", response_model=WishlistItemOut)
 async def create_my_wishlist(
-    body: WishlistCreate,
     session: Annotated[AsyncSession, Depends(get_db)],
     user: User = Depends(get_current_user),
+    title: str = Form(...),
+    description: str | None = Form(None),
+    link_url: str | None = Form(None),
+    file: UploadFile | None = File(None),
 ) -> WishlistItemOut:
-    if not body.title.strip():
+    t = title.strip()
+    if not t:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty_title")
-    w = Wishlist(user_id=user.id, title=body.title.strip())
+    try:
+        link = parse_optional_link_url(link_url)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid_link_url",
+        ) from None
+    desc = _normalize_description(description)
+    photo_rel: str | None = None
+    if file is not None and (file.filename or "").strip():
+        raw, _ = await read_raw_upload(file)
+        processed, ext = process_and_resize_wishlist_image(raw)
+        photo_rel = save_wishlist_photo_bytes(processed, ext)
+    w = Wishlist(
+        user_id=user.id,
+        title=t,
+        description=desc,
+        link_url=link,
+        photo_path=photo_rel,
+    )
     session.add(w)
     await session.flush()
     await session.refresh(w)
-    return WishlistItemOut.model_validate(w)
+    return build_wishlist_item_out(w)
+
+
+@router.patch("/me/wishlists/{wishlist_id}", response_model=WishlistItemOut)
+async def patch_my_wishlist(
+    wishlist_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user: User = Depends(get_current_user),
+    title: str = Form(...),
+    description: str | None = Form(None),
+    link_url: str | None = Form(None),
+    file: UploadFile | None = File(None),
+    clear_photo: bool = Form(False),
+) -> WishlistItemOut:
+    result = await session.execute(
+        select(Wishlist).where(Wishlist.id == wishlist_id, Wishlist.user_id == user.id),
+    )
+    w = result.scalar_one_or_none()
+    if w is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    t = title.strip()
+    if not t:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty_title")
+    try:
+        link = parse_optional_link_url(link_url)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid_link_url",
+        ) from None
+    w.title = t
+    w.description = _normalize_description(description)
+    w.link_url = link
+    if clear_photo:
+        delete_wishlist_file_if_exists(w.photo_path)
+        w.photo_path = None
+    if file is not None and (file.filename or "").strip():
+        delete_wishlist_file_if_exists(w.photo_path)
+        raw, _ = await read_raw_upload(file)
+        processed, ext = process_and_resize_wishlist_image(raw)
+        w.photo_path = save_wishlist_photo_bytes(processed, ext)
+    await session.flush()
+    await session.refresh(w)
+    return build_wishlist_item_out(w)
 
 
 @router.delete("/me/wishlists/{wishlist_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -105,6 +185,7 @@ async def delete_my_wishlist(
     w = result.scalar_one_or_none()
     if w is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    delete_wishlist_file_if_exists(w.photo_path)
     await session.delete(w)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

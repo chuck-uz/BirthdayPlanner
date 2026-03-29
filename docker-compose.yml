@@ -64,6 +64,7 @@ services:
         condition: service_healthy
     volumes:
       - backend_avatars:/app/uploads/avatars
+      - backend_wishlist_photos:/app/uploads/wishlist
     networks:
       - birthday_net
 
@@ -97,3 +98,4 @@ networks:
 volumes:
   postgres_data:
   backend_avatars:
+  backend_wishlist_photos:

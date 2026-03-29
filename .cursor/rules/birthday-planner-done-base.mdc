@@ -18,7 +18,7 @@ alwaysApply: true
 
 - **Backend:** FastAPI, async SQLAlchemy 2, Postgres (`asyncpg`), Pydantic Settings, JWT (python-jose), HttpOnly cookie.
 - **Frontend:** Vite 8, React 19, TS, Tailwind 4, React Router 7, axios (withCredentials).
-- **Docker:** `docker-compose.yml` — `db`, `backend` (:8000), `frontend` (**хост 80 → контейнер 5173**), `HMR_CLIENT_PORT=80`, `FRONTEND_DEFAULT_URL` для backend в compose; volume **`backend_avatars`** → `/app/uploads/avatars`.
+- **Docker:** `docker-compose.yml` — `db`, `backend` (:8000), `frontend` (**хост 80 → контейнер 5173**), `HMR_CLIENT_PORT=80`, `FRONTEND_DEFAULT_URL` для backend в compose; volumes **`backend_avatars`** → `/app/uploads/avatars`, **`backend_wishlist_photos`** → `/app/uploads/wishlist`.
 - **Переменные:** корневой `.env` — `DATABASE_URL`, `BOT_TOKEN`, `JWT_SECRET_KEY`, `FRONTEND_DEFAULT_URL`, опционально `BIRTHDAY_NOTIFY_DAYS_BEFORE`, `SCHEDULER_TIMEZONE`, **`TELEGRAM_ADMIN_ID`** (ручные группы), **`TELEGRAM_WEBHOOK_BASE_URL`**, **`TELEGRAM_WEBHOOK_SECRET`** (вебхук бота).
 
 ## Авторизация (Telegram)
@@ -30,11 +30,11 @@ alwaysApply: true
 
 ## Пользователи и профиль
 
-- **Модели:** `User` (telegram_id, full_name, birth_date, **`avatar_path`**, **`is_bot_active`** — пользователь нажал `/start` у бота или подтверждён `getChat` при проверке доставки), `Wishlist`, **`Subscription`**, **`BirthdayEvent`**, **`AdminBirthdayPrompt`** (`prompt_recipient_telegram_id` — кому ушли кнопки: админ из env или подписчик при отсутствии env).
+- **Модели:** `User` (telegram_id, full_name, birth_date, **`avatar_path`**, **`is_bot_active`** — пользователь нажал `/start` у бота или подтверждён `getChat` при проверке доставки), **`Wishlist`** (**`title`**, **`description`**, **`link_url`**, **`photo_path`** — относительный путь `wishlist/<uuid>.<ext>`, без StaticFiles), **`Subscription`**, **`BirthdayEvent`**, **`AdminBirthdayPrompt`** (`prompt_recipient_telegram_id` — кому ушли кнопки: админ из env или подписчик при отсутствии env).
 - **Профиль:** `PATCH /api/users/me` (ФИО + дата рождения, валидация). **`PATCH /api/users/me/avatar`** — загрузка JPEG/PNG до 5 МБ (UUID-имя), **`GET /api/users/{id}/avatar`** — выдача файла только с JWT; **`StaticFiles` для `uploads/` нет**.
 - **Аватары:** файлы в **`backend/uploads/avatars/`**, логика **`avatar_storage.py`** (сигнатуры файлов, лимит размера, защита от path traversal).
-- **Вишлист:** `GET/POST/DELETE /api/users/me/wishlists` — данные в БД; **`ProfilePage`** синхронизирован с API.
-- **Главная:** `GET /api/users/birthdays/upcoming` — реальные пользователи с `birth_date`, поля **`subscribed`**, **`has_avatar`** для карточки; UI: прямоугольные карточки (аватар **`GET /api/users/{id}/avatar`**, ФИО, дата), ссылки **Профиль** / **Вишлист** (`#wishlist` на **`UserProfilePage`**), **`BirthdayNotifyBell`** (колокольчик), кнопка **Google Календарь** — ссылка `render?action=TEMPLATE` из **`buildGoogleCalendarBirthdayUrl`** (`frontend/src/lib/birthdayFormat.ts`).
+- **Вишлист (карточки подарков):** **`GET /api/users/me/wishlists`**, **`POST`** и **`PATCH`** — **`multipart/form-data`**: `title`, `description`, `link_url` (валидный URL), опционально `file` (JPEG/PNG до 5 МБ); **`PATCH`** — ещё **`clear_photo`**. **`DELETE /api/users/me/wishlists/{id}`** — удаляет и файл фото. JSON **`WishlistItemOut`**: `has_photo`, без пути к файлу; фото только **`GET /api/wishlists/{item_id}/photo`** (JWT). Сжатие на бэкенде: **Pillow**, до **800px** по длинной стороне (**`wishlist_storage.py`**). **`ProfilePage`**: модалка **`WishlistItemModal`**, сетка **`WishlistItemCard`** (редактирование/удаление); **`UserProfilePage`**: те же карточки только просмотр; внешние ссылки — **`rel="noopener noreferrer"`**.
+- **Главная:** `GET /api/users/birthdays/upcoming` — реальные пользователи с `birth_date`, поля **`subscribed`**, **`has_avatar`** для карточки; UI: прямоугольные карточки (аватар **`GET /api/users/{id}/avatar`**, ФИО, дата), ссылка **Вишлист** (`/users/:id#wishlist`), **`BirthdayNotifyBell`**, **Google Календарь** — **`buildGoogleCalendarBirthdayUrl`** (`frontend/src/lib/birthdayFormat.ts`).
 - **Профиль именинника:** `GET /api/users/{id}` (без telegram_id чужого), вишлист только чтение; роут **`/users/:userId`**, карточки на главной — ссылки.
 
 ## Подписки и уведомления о ДР
@@ -75,3 +75,4 @@ alwaysApply: true
 | 2026-03-29 | Ручной поток при подписке без **`TELEGRAM_ADMIN_ID`** — кнопки подписчику; **`prompt_recipient_telegram_id`**; миграция колонки в **`main`**. |
 | 2026-03-29 | Аватары: **`users.avatar_path`**, **`PATCH /api/users/me/avatar`**, **`GET /api/users/{id}/avatar`**, volume **`backend_avatars`**, **`python-multipart`**. |
 | 2026-03-29 | Главная: карточки с аватаром и действиями; **`is_bot_active`**, вебхук **`/start`**, синхронизация через **`telegram-delivery`**; **`BotStartModal`**, Google Calendar URL на фронте; **`UpcomingBirthdayOut.has_avatar`**. |
+| 2026-03-29 | Вишлист с фото референса: поля **`description`**, **`link_url`**, **`photo_path`**; **`wishlist_storage`** + **Pillow**; **`GET /api/wishlists/{id}/photo`**; volume **`backend_wishlist_photos`**; UI **`WishlistItemCard`**, **`WishlistItemModal`**, **`wishlistPhotoUrl`**. |

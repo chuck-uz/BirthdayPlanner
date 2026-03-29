@@ -1,6 +1,9 @@
 export type WishlistItem = {
   id: number
   title: string
+  description: string | null
+  link_url: string | null
+  has_photo: boolean
   created_at: string
 }
 

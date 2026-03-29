@@ -7,3 +7,5 @@ dist/
 # Загруженные аватары (структура каталога — .gitkeep в репо)
 backend/uploads/avatars/*
 !backend/uploads/avatars/.gitkeep
+backend/uploads/wishlist/*
+!backend/uploads/wishlist/.gitkeep

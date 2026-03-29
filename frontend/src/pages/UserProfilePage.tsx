@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, CalendarDays, Gift, ListChecks } from 'lucide-react'
+
+import { WishlistItemCard } from '@/components/wishlist/WishlistItemCard'
 import { Link, useParams } from 'react-router-dom'
 
 import { BotStartModal } from '@/components/bot/BotStartModal'
@@ -173,9 +175,7 @@ export function UserProfilePage() {
               <ListChecks className="size-5" aria-hidden />
               <CardTitle className="text-lg">Вишлист</CardTitle>
             </div>
-            <CardDescription>
-              Идеи подарков — так видит список любой участник приложения.
-            </CardDescription>
+            <CardDescription>Идеи подарков с референсами и ссылками</CardDescription>
           </CardHeader>
           {profile.wishlists.length === 0 ? (
             <div className="px-6 pb-8 pt-0">
@@ -185,16 +185,11 @@ export function UserProfilePage() {
               </div>
             </div>
           ) : (
-            <ul className="space-y-2 px-6 pb-8">
+            <div className="grid gap-4 px-6 pb-8 sm:grid-cols-2 lg:grid-cols-3">
               {profile.wishlists.map((w) => (
-                <li
-                  key={w.id}
-                  className="rounded-xl border border-white/40 bg-white/50 px-4 py-3 text-sm text-zinc-800 dark:border-white/10 dark:bg-zinc-950/40 dark:text-zinc-200"
-                >
-                  {w.title}
-                </li>
+                <WishlistItemCard key={w.id} item={w} variant="public" />
               ))}
-            </ul>
+            </div>
           )}
         </Card>
       ) : null}

@@ -15,6 +15,8 @@ from jobs.scheduler import shutdown_scheduler, start_scheduler
 from routers.telegram_auth import router as telegram_auth_router
 from routers.telegram_webhook import router as telegram_webhook_router
 from routers.users import router as users_router
+from routers.wishlists import router as wishlists_router
+from wishlist_storage import ensure_wishlist_dir
 from telegram_service import telegram_set_webhook
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     ensure_avatars_dir()
+    ensure_wishlist_dir()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         if "postgresql" in settings.database_url.lower():
@@ -61,6 +64,19 @@ async def lifespan(app: FastAPI):
                     "Could not add users.is_bot_active column (migrate manually if needed)",
                     exc_info=True,
                 )
+            for stmt in (
+                "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS description TEXT",
+                "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS link_url VARCHAR(2048)",
+                "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS photo_path VARCHAR(512)",
+            ):
+                try:
+                    await conn.execute(text(stmt))
+                except Exception:
+                    logger.warning(
+                        "Could not migrate wishlists column: %s",
+                        stmt.split()[-1],
+                        exc_info=True,
+                    )
     start_scheduler()
     base = (settings.telegram_webhook_base_url or "").strip().rstrip("/")
     if base:
@@ -93,6 +109,7 @@ app.add_middleware(
 app.include_router(telegram_auth_router)
 app.include_router(telegram_webhook_router)
 app.include_router(users_router)
+app.include_router(wishlists_router)
 
 
 @app.get("/health")
