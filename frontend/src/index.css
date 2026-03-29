@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --shadow-glass: 0 8px 32px rgba(15, 23, 42, 0.08);
+  --shadow-glass-lg: 0 24px 64px rgba(15, 23, 42, 0.12);
+}
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply min-h-svh bg-zinc-50 text-zinc-900 transition-colors duration-300 dark:bg-black dark:text-zinc-100;
+  }
+}
