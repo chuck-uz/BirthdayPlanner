@@ -18,7 +18,7 @@ alwaysApply: true
 
 - **Backend:** FastAPI, async SQLAlchemy 2, Postgres (`asyncpg`), Pydantic Settings, JWT (python-jose), HttpOnly cookie.
 - **Frontend:** Vite 8, React 19, TS, Tailwind 4, React Router 7, axios (withCredentials).
-- **Docker:** `docker-compose.yml` — `db`, `backend` (:8000), `frontend` (**хост 80 → контейнер 5173**), `HMR_CLIENT_PORT=80`, `FRONTEND_DEFAULT_URL` для backend в compose.
+- **Docker:** `docker-compose.yml` — `db`, `backend` (:8000), `frontend` (**хост 80 → контейнер 5173**), `HMR_CLIENT_PORT=80`, `FRONTEND_DEFAULT_URL` для backend в compose; volume **`backend_avatars`** → `/app/uploads/avatars`.
 - **Переменные:** корневой `.env` — `DATABASE_URL`, `BOT_TOKEN`, `JWT_SECRET_KEY`, `FRONTEND_DEFAULT_URL`, опционально `BIRTHDAY_NOTIFY_DAYS_BEFORE`, `SCHEDULER_TIMEZONE`, **`TELEGRAM_ADMIN_ID`** (ручные группы), **`TELEGRAM_WEBHOOK_BASE_URL`**, **`TELEGRAM_WEBHOOK_SECRET`** (вебхук бота).
 
 ## Авторизация (Telegram)
@@ -30,8 +30,9 @@ alwaysApply: true
 
 ## Пользователи и профиль
 
-- **Модели:** `User` (telegram_id, full_name, birth_date), `Wishlist`, **`Subscription`**, **`BirthdayEvent`**, **`AdminBirthdayPrompt`** (`prompt_recipient_telegram_id` — кому ушли кнопки: админ из env или подписчик при отсутствии env).
-- **Профиль:** `PATCH /api/users/me` (ФИО + дата рождения, валидация).
+- **Модели:** `User` (telegram_id, full_name, birth_date, **`avatar_path`**), `Wishlist`, **`Subscription`**, **`BirthdayEvent`**, **`AdminBirthdayPrompt`** (`prompt_recipient_telegram_id` — кому ушли кнопки: админ из env или подписчик при отсутствии env).
+- **Профиль:** `PATCH /api/users/me` (ФИО + дата рождения, валидация). **`PATCH /api/users/me/avatar`** — загрузка JPEG/PNG до 5 МБ (UUID-имя), **`GET /api/users/{id}/avatar`** — выдача файла только с JWT; **`StaticFiles` для `uploads/` нет**.
+- **Аватары:** файлы в **`backend/uploads/avatars/`**, логика **`avatar_storage.py`** (сигнатуры файлов, лимит размера, защита от path traversal).
 - **Вишлист:** `GET/POST/DELETE /api/users/me/wishlists` — данные в БД; **`ProfilePage`** синхронизирован с API.
 - **Главная:** `GET /api/users/birthdays/upcoming` — реальные пользователи с `birth_date`, поле **`subscribed`** для текущего пользователя.
 - **Профиль именинника:** `GET /api/users/{id}` (без telegram_id чужого), вишлист только чтение; роут **`/users/:userId`**, карточки на главной — ссылки.
@@ -70,3 +71,4 @@ alwaysApply: true
 | 2026-03-29 | Без админа при ошибке `createChat` подписчикам **не** шлются тексты-заглушки; пустой **`TELEGRAM_ADMIN_ID`** в `.env` трактуется как отсутствие. |
 | 2026-03-29 | Подписка пользователя с **`telegram_id == TELEGRAM_ADMIN_ID`:** запрос на группу и вне окна N дней; **`trigger_subscriber`** + flush в админ-потоке. |
 | 2026-03-29 | Ручной поток при подписке без **`TELEGRAM_ADMIN_ID`** — кнопки подписчику; **`prompt_recipient_telegram_id`**; миграция колонки в **`main`**. |
+| 2026-03-29 | Аватары: **`users.avatar_path`**, **`PATCH /api/users/me/avatar`**, **`GET /api/users/{id}/avatar`**, volume **`backend_avatars`**, **`python-multipart`**. |

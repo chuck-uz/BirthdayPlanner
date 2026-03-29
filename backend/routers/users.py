@@ -3,11 +3,19 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from avatar_storage import (
+    delete_stored_file_if_exists,
+    filesystem_path_for_stored,
+    media_type_for_stored,
+    read_and_validate_avatar,
+    save_avatar_bytes,
+)
 from birthday_notify_logic import run_subscribe_telegram_followup
 from birthday_utils import days_until_next_birthday
 from database import get_db
@@ -239,6 +247,44 @@ async def patch_me(
     user.full_name = body.full_name
     user.birth_date = body.birth_date
     return build_user_me_out(user)
+
+
+@router.patch("/me/avatar", response_model=UserMeOut)
+async def patch_my_avatar(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user: User = Depends(get_current_user),
+    file: UploadFile = File(...),
+) -> UserMeOut:
+    data, ext = await read_and_validate_avatar(file)
+    old_path = user.avatar_path
+    rel = save_avatar_bytes(data, ext)
+    user.avatar_path = rel
+    await session.flush()
+    if old_path and old_path != rel:
+        delete_stored_file_if_exists(old_path)
+    return build_user_me_out(user)
+
+
+@router.get("/{user_id}/avatar")
+async def get_user_avatar(
+    user_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _: User = Depends(get_current_user),
+) -> FileResponse:
+    target = await session.get(User, user_id)
+    if target is None or not (target.avatar_path and str(target.avatar_path).strip()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
+    try:
+        path = filesystem_path_for_stored(target.avatar_path)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found") from None
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
+    return FileResponse(
+        path,
+        media_type=media_type_for_stored(target.avatar_path),
+        filename=path.name,
+    )
 
 
 @router.get("/{user_id}", response_model=UserPublicProfileOut)
