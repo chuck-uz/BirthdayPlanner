@@ -1,0 +1,72 @@
+version: '3.8' # Версия формата конфигурации
+
+services:
+  # --- СЕРВИС БАЗЫ ДАННЫХ ---
+  db:
+    # Используем последнюю стабильную версию 17 на базе Alpine (минимум места, максимум защиты)
+    image: postgres:17-alpine
+    
+    # Имя контейнера в Docker Desktop (удобно для поиска)
+    container_name: birthday_db
+    
+    # Политика перезапуска: если Windows перезагрузится, база включится сама
+    restart: always
+    
+    # Секретные данные берем из твоего файла .env
+    # Формат ${ПЕРЕМЕННАЯ:-значение_по_умолчанию}
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}         # Логин администратора
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password} # Пароль администратора
+      POSTGRES_DB: ${DB_NAME:-birthday_planner}       # Название базы данных
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    
+    # Проброс портов: "Порт_на_твоем_ПК : Порт_внутри_Докера"
+    # Это позволит тебе зайти в базу через DBeaver или pgAdmin по адресу localhost:5432
+    ports:
+      - "5432:5432"
+    
+    # Хранилище (Volumes) — ГЛАВНОЕ ДЛЯ БЕЗОПАСНОСТИ ДАННЫХ
+    # Привязываем внутреннюю папку базы к именованному хранилищу 'postgres_data'
+    # Даже если ты удалишь проект в Cursor, твои данные останутся в Docker-хранилище
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    
+    # Изолированная внутренняя сеть
+    networks:
+      - birthday_net
+
+  # --- BACKEND (FastAPI) ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: birthday_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Внутри Docker хост БД — имя сервиса db (сеть birthday_net)
+      DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      # BOT_TOKEN, JWT_SECRET_KEY и остальные секреты — в .env (env_file выше)
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - birthday_net
+
+# Описание сетей: бэкенд и база будут видеть друг друга здесь
+networks:
+  birthday_net:
+    driver: bridge
+
+# Описание хранилищ: здесь Docker будет физически держать файлы базы
+volumes:
+  postgres_data:
