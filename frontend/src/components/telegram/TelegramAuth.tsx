@@ -1,59 +1,67 @@
 import { useEffect, useRef } from 'react'
 
-const WIDGET_SRC = 'https://telegram.org/js/telegram-widget.js?22'
+import {
+  buildTelegramAuthRedirectFromWidgetUser,
+  normalizeTelegramAuthBase,
+} from '@/lib/telegramLoginUrls'
 
-function buildAuthUrl(base: string): string {
-  const next = `${window.location.origin}/`
-  const sep = base.includes('?') ? '&' : '?'
-  return `${base}${sep}next=${encodeURIComponent(next)}`
+/** Официальный telegram-widget.js: data-onauth → редирект на бэкенд с теми же query, что и data-auth-url. */
+const TELEGRAM_WIDGET_SCRIPT = 'https://telegram.org/js/telegram-widget.js?22'
+const WIDGET_ON_AUTH_GLOBAL = '__birthdayPlannerTelegramOnAuth'
+
+function parseWidgetUser(raw: Record<string, unknown> | string): Record<string, unknown> {
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>
+    } catch {
+      return {}
+    }
+  }
+  return raw
 }
 
-/**
- * Виджет Telegram Login. Домен в BotFather: http://127.0.0.1
- * VITE_TELEGRAM_AUTH_URL — полный URL бэкенда, например
- * http://127.0.0.1:8000/api/auth/telegram
- */
 export function TelegramAuth() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const botName = import.meta.env.VITE_TELEGRAM_BOT_NAME
-  const authBase = import.meta.env.VITE_TELEGRAM_AUTH_URL
+  const botName = import.meta.env.VITE_TELEGRAM_BOT_NAME?.trim()
+  const authRaw = import.meta.env.VITE_TELEGRAM_AUTH_URL?.trim() ?? ''
+  const authBase = authRaw ? normalizeTelegramAuthBase(authRaw) : ''
+  const widgetHostRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!botName || !authBase || !containerRef.current) return
+    if (!botName || !authBase || !widgetHostRef.current) return
 
-    const el = containerRef.current
-    el.innerHTML = ''
+    const hostEl = widgetHostRef.current
+    hostEl.replaceChildren()
+
+    const w = window as Window & {
+      [WIDGET_ON_AUTH_GLOBAL]?: (user: Record<string, unknown> | string) => void
+    }
+    w[WIDGET_ON_AUTH_GLOBAL] = (userRaw) => {
+      const user = parseWidgetUser(userRaw)
+      window.location.assign(buildTelegramAuthRedirectFromWidgetUser(authBase, user, false))
+    }
 
     const script = document.createElement('script')
-    script.src = WIDGET_SRC
     script.async = true
+    script.src = TELEGRAM_WIDGET_SCRIPT
     script.setAttribute('data-telegram-login', botName)
     script.setAttribute('data-size', 'large')
-    script.setAttribute('data-radius', '12')
-    script.setAttribute('data-request-access', 'write')
-    script.setAttribute('data-auth-url', buildAuthUrl(authBase))
-
-    el.appendChild(script)
+    script.setAttribute('data-onauth', `${WIDGET_ON_AUTH_GLOBAL}(user)`)
+    script.setAttribute('data-origin', window.location.origin)
+    hostEl.appendChild(script)
 
     return () => {
-      el.innerHTML = ''
+      delete w[WIDGET_ON_AUTH_GLOBAL]
+      hostEl.replaceChildren()
     }
   }, [botName, authBase])
 
   if (!botName || !authBase) {
-    return (
-      <p className="text-center text-sm text-orange-800 dark:text-orange-400">
-        Задайте в <code className="rounded bg-black/5 px-1 dark:bg-white/10">frontend/.env</code>{' '}
-        переменные <code>VITE_TELEGRAM_BOT_NAME</code> и{' '}
-        <code>VITE_TELEGRAM_AUTH_URL</code>.
-      </p>
-    )
+    return <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">Вход недоступен</p>
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex min-h-[48px] items-center justify-center [&_iframe]:rounded-xl"
-    />
+    <div className="flex w-full max-w-[320px] flex-col items-center justify-center">
+      <div ref={widgetHostRef} className="flex min-h-[44px] w-full flex-col items-center justify-center" />
+    </div>
   )
 }

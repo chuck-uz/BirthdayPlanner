@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import json
 from typing import Literal, cast
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +11,7 @@ from auth import TelegramAuthError, create_access_token, verify_telegram_login_h
 from config import Settings, get_settings
 from database import get_db
 from models import User
-from redirects import safe_browser_redirect
+from redirects import resolve_post_login_redirect
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -27,6 +27,36 @@ def _same_site_cookie(value: str) -> Literal["lax", "strict", "none"]:
     return "lax"
 
 
+_SKIP_TELEGRAM_VERIFY = frozenset({"next", "popup"})
+
+
+def _popup_success_response(
+    redirect_url: str,
+    token: str,
+    settings: Settings,
+) -> HTMLResponse:
+    """После входа: редирект в этом же окне (popup). Cookie уже в ответе. Без postMessage — иначе Firefox/
+    Telegram (чужой opener / неверный targetOrigin) сыплют ошибки в консоль; родитель подхватит сессию
+    по focus/visibility (см. AuthContext)."""
+    redirect_js = json.dumps(redirect_url, ensure_ascii=False)
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход выполнен</title></head>
+<body style="font-family:system-ui,sans-serif;padding:1.5rem;text-align:center;background:#fafafa">
+<p style="margin:0;font-size:14px;color:#333">Переход в приложение…</p>
+<script>
+(function() {{
+  var url = {redirect_js};
+  window.location.replace(url);
+}})();
+</script>
+</body></html>"""
+    response = HTMLResponse(content=html, status_code=status.HTTP_200_OK)
+    _attach_auth_cookie(response, token, settings)
+    return response
+
+
 def _attach_auth_cookie(response: Response, token: str, settings: Settings) -> None:
     max_age = settings.jwt_expire_minutes * 60
     response.set_cookie(
@@ -40,15 +70,14 @@ def _attach_auth_cookie(response: Response, token: str, settings: Settings) -> N
     )
 
 
-@router.get("/telegram")
+@router.get("/telegram", response_model=None)
 async def telegram_login(
     request: Request,
     session: AsyncSession = Depends(get_db),
-) -> JSONResponse | RedirectResponse:
+) -> RedirectResponse | HTMLResponse:
     settings = get_settings()
     raw_all = _query_params_as_str_dict(request)
-    next_url = safe_browser_redirect(raw_all.get("next"))
-    raw = {k: v for k, v in raw_all.items() if k != "next"}
+    raw = {k: v for k, v in raw_all.items() if k not in _SKIP_TELEGRAM_VERIFY}
 
     try:
         verify_telegram_login_hash(
@@ -89,20 +118,22 @@ async def telegram_login(
         extra_claims={"telegram_id": telegram_id},
     )
 
-    if next_url:
-        redirect = RedirectResponse(url=next_url, status_code=status.HTTP_302_FOUND)
-        _attach_auth_cookie(redirect, token, settings)
-        return redirect
+    redirect_url = resolve_post_login_redirect(
+        raw_all.get("next"),
+        settings.frontend_default_url,
+    )
+    popup = (raw_all.get("popup") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if popup:
+        return _popup_success_response(redirect_url, token, settings)
 
-    body = {
-        "access_token": token,
-        "token_type": "bearer",
-        "user_id": user.id,
-        "telegram_id": telegram_id,
-    }
-    response = JSONResponse(content=body, status_code=status.HTTP_200_OK)
-    _attach_auth_cookie(response, token, settings)
-    return response
+    redirect = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    _attach_auth_cookie(redirect, token, settings)
+    return redirect
 
 
 @router.post("/logout")

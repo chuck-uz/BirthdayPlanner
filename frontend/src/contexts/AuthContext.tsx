@@ -27,8 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const { data } = await api.get<UserProfile>('/api/users/me')
-      setUser(data)
+      const res = await api.get<UserProfile>('/api/users/me', {
+        // 401 без cookie — нормальная ситуация (страница логина), не «ошибка» Axios.
+        validateStatus: (s) => s === 200 || s === 401,
+      })
+      if (res.status === 401) {
+        setUser(null)
+      } else {
+        setUser(res.data)
+      }
     } catch {
       setUser(null)
     } finally {
@@ -47,6 +54,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshUser()
+  }, [refreshUser])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshUser()
+      }
+    }
+    const onFocus = () => {
+      void refreshUser()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [refreshUser])
 
   useEffect(() => {

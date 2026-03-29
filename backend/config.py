@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     cookie_secure: bool = Field(default=False, alias="COOKIE_SECURE")
     cookie_samesite: str = Field(default="lax", alias="COOKIE_SAMESITE")
 
+    # Редирект после Telegram Login, если параметр next потерян или не прошёл проверку
+    frontend_default_url: str = Field(
+        default="http://127.0.0.1/",
+        alias="FRONTEND_DEFAULT_URL",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

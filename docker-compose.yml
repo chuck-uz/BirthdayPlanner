@@ -55,6 +55,8 @@ services:
     environment:
       # Внутри Docker хост БД — имя сервиса db (сеть birthday_net)
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      # Фронт с хоста: 80→5173; редирект после Telegram Login
+      FRONTEND_DEFAULT_URL: http://127.0.0.1/
       # BOT_TOKEN, JWT_SECRET_KEY и остальные секреты — в .env (env_file выше)
     depends_on:
       db:
@@ -68,9 +70,12 @@ services:
       dockerfile: Dockerfile
     container_name: birthday_frontend
     restart: unless-stopped
+    # С хоста: http://127.0.0.1/ (порт 80; на Windows может понадобиться запуск от администратора)
     ports:
-      - "5173:5173"
+      - "80:5173"
     environment:
+      IN_DOCKER: "1"
+      HMR_CLIENT_PORT: "80"
       VITE_API_PROXY_TARGET: http://backend:8000
       VITE_TELEGRAM_AUTH_URL: http://127.0.0.1:8000/api/auth/telegram
     env_file:
