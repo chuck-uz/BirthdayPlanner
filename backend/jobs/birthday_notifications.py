@@ -33,7 +33,9 @@ async def run_daily_birthday_reminders() -> None:
     logger.info("birthday_reminders: date=%s lead_days=%s", today, lead)
 
     async with async_session_maker() as session:
-        result = await session.execute(select(User).where(User.birth_date.is_not(None)))
+        result = await session.execute(
+            select(User).where(User.birth_date.is_not(None), User.is_blocked.is_(False)),
+        )
         targets = list(result.scalars().unique().all())
 
     for target in targets:

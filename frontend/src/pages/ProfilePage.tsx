@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Gift, Plus, Upload, UserRound } from 'lucide-react'
+import { Camera, Gift, Plus, UserRound } from 'lucide-react'
 
 import { WishlistItemCard } from '@/components/wishlist/WishlistItemCard'
 import { WishlistItemModal } from '@/components/wishlist/WishlistItemModal'
@@ -170,33 +170,33 @@ export function ProfilePage() {
                   <img
                     src={`/api/users/${user.id}/avatar?v=${avatarBust}`}
                     alt=""
-                    className="size-24 rounded-2xl border border-zinc-200/80 object-cover shadow-sm dark:border-zinc-700"
+                    className="size-28 rounded-2xl border border-zinc-200/80 object-cover shadow-sm dark:border-zinc-700"
                     onError={() => setAvatarImgFailed(true)}
                   />
                 ) : (
                   <div
-                    className="flex size-24 items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-100/80 text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-500"
+                    className="flex size-28 items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-100/80 text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-500"
                     aria-hidden
                   >
-                    <UserRound className="size-12" strokeWidth={1.25} />
+                    <UserRound className="size-14" strokeWidth={1.25} />
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={openAvatarPicker}
+                  disabled={avatarUploading}
+                  title={user?.has_avatar ? 'Сменить фото' : 'Загрузить фото'}
+                  className="absolute -bottom-1 -right-1 flex size-9 items-center justify-center rounded-full border-2 border-white bg-orange-600 text-white shadow-md transition hover:bg-orange-500 disabled:opacity-50 dark:border-zinc-900 dark:bg-orange-500 dark:hover:bg-orange-400"
+                  aria-label={user?.has_avatar ? 'Сменить фото профиля' : 'Загрузить фото профиля'}
+                >
+                  <Camera className="size-4" aria-hidden />
+                </button>
               </div>
               <div className="min-w-0 flex-1 space-y-2">
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  Выберите файл с устройства: <strong className="font-medium text-zinc-800 dark:text-zinc-200">JPEG или PNG</strong>, не больше{' '}
-                  <strong className="font-medium text-zinc-800 dark:text-zinc-200">5 МБ</strong>. Аватарка не подтягивается из Telegram автоматически.
+                  Нажмите на иконку камеры, чтобы выбрать фото: <strong className="font-medium text-zinc-800 dark:text-zinc-200">JPEG или PNG</strong>, до{' '}
+                  <strong className="font-medium text-zinc-800 dark:text-zinc-200">5 МБ</strong>.
                 </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="gap-2 py-2 text-xs"
-                  onClick={openAvatarPicker}
-                  disabled={avatarUploading}
-                >
-                  <Upload className="size-4" aria-hidden />
-                  {user?.has_avatar ? 'Сменить фото' : 'Загрузить фото'}
-                </Button>
                 {avatarUploading ? (
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">Загрузка…</p>
                 ) : null}
@@ -206,12 +206,12 @@ export function ProfilePage() {
                   </p>
                 ) : null}
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Имя и дату рождения можно изменить на{' '}
+                  ФИО и дату рождения — в{' '}
                   <Link
-                    to="/setup-profile"
+                    to="/profile/settings"
                     className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                   >
-                    странице настройки профиля
+                    настройках профиля
                   </Link>
                   .
                 </p>

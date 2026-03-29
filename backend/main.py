@@ -14,6 +14,7 @@ from database import Base, engine
 from jobs.scheduler import shutdown_scheduler, start_scheduler
 from routers.telegram_auth import router as telegram_auth_router
 from routers.telegram_webhook import router as telegram_webhook_router
+from routers.admin import router as admin_router
 from routers.users import router as users_router
 from routers.wishlists import router as wishlists_router
 from wishlist_storage import ensure_wishlist_dir
@@ -64,6 +65,28 @@ async def lifespan(app: FastAPI):
                     "Could not add users.is_bot_active column (migrate manually if needed)",
                     exc_info=True,
                 )
+            try:
+                await conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false",
+                    ),
+                )
+            except Exception:
+                logger.warning(
+                    "Could not add users.is_blocked column (migrate manually if needed)",
+                    exc_info=True,
+                )
+            try:
+                await conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false",
+                    ),
+                )
+            except Exception:
+                logger.warning(
+                    "Could not add users.is_test column (migrate manually if needed)",
+                    exc_info=True,
+                )
             for stmt in (
                 "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS description TEXT",
                 "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS link_url VARCHAR(2048)",
@@ -108,6 +131,7 @@ app.add_middleware(
 
 app.include_router(telegram_auth_router)
 app.include_router(telegram_webhook_router)
+app.include_router(admin_router)
 app.include_router(users_router)
 app.include_router(wishlists_router)
 

@@ -8,28 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
-
-function validateFullName(value: string): string | null {
-  const v = value.trim().replace(/\s+/g, ' ')
-  if (!v) return 'Укажите фамилию, имя и отчество'
-  const parts = v.split(' ').filter(Boolean)
-  if (parts.length < 2) return 'Нужно минимум два слова (фамилия и имя)'
-  if (v.length < 4) return 'Слишком короткое ФИО'
-  return null
-}
-
-function validateBirthDate(value: string): string | null {
-  if (!value) return 'Выберите дату рождения'
-  const d = new Date(value + 'T12:00:00')
-  if (Number.isNaN(d.getTime())) return 'Некорректная дата'
-  const today = new Date()
-  today.setHours(23, 59, 59, 999)
-  if (d > today) return 'Дата не может быть в будущем'
-  const oldest = new Date()
-  oldest.setFullYear(oldest.getFullYear() - 120)
-  if (d < oldest) return 'Некорректная дата рождения'
-  return null
-}
+import { validateBirthDate, validateFullName } from '@/lib/profileValidation'
 
 export function SetupProfilePage() {
   const { refreshUser } = useAuth()

@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { notifyUnauthorized } from '@/lib/authSession'
+import { notifyAccountBlocked, notifyUnauthorized } from '@/lib/authSession'
 
 /**
  * Same-origin `/api` in dev is proxied to FastAPI so HttpOnly cookies
@@ -17,10 +17,18 @@ export const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      const url = error.config?.url ?? ''
-      if (!url.includes('/api/users/me')) {
-        notifyUnauthorized()
+    if (axios.isAxiosError(error) && error.response) {
+      const status = error.response.status
+      const detail = (error.response.data as { detail?: unknown })?.detail
+      const detailStr = typeof detail === 'string' ? detail : ''
+      if (status === 403 && detailStr === 'account_blocked') {
+        notifyAccountBlocked()
+      }
+      if (status === 401) {
+        const url = error.config?.url ?? ''
+        if (!url.includes('/api/users/me')) {
+          notifyUnauthorized()
+        }
       }
     }
     return Promise.reject(error)

@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # Часовой пояс ежедневной проверки (09:00)
     scheduler_timezone: str = Field(default="Europe/Moscow", alias="SCHEDULER_TIMEZONE")
 
-    # Telegram user id админа: запросы на создание группы и inline-кнопки только ему
+    # Telegram user id админа: кнопки бота + веб-панель /admin (PATCH блокировка, список пользователей)
     telegram_admin_id: int | None = Field(default=None, alias="TELEGRAM_ADMIN_ID")
 
     # Вебхук: секрет в заголовке X-Telegram-Bot-Api-Secret-Token (рекомендуется в проде)
