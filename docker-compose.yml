@@ -57,7 +57,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       # Фронт с хоста: 80→5173; редирект после Telegram Login
       FRONTEND_DEFAULT_URL: http://127.0.0.1/
-      # BOT_TOKEN, JWT_SECRET_KEY и остальные секреты — в .env (env_file выше)
+      # BOT_TOKEN, JWT_SECRET_KEY, TELEGRAM_ADMIN_ID, TELEGRAM_WEBHOOK_BASE_URL,
+      # TELEGRAM_WEBHOOK_SECRET — в .env (env_file выше)
     depends_on:
       db:
         condition: service_healthy

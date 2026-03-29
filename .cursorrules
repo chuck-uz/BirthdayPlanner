@@ -4,11 +4,14 @@
 
 | Файл | Когда применяется |
 |------|-------------------|
+| `.cursor/rules/birthday-planner-done-base.mdc` | Всегда — **база «что уже сделано»** (фичи, API, файлы); смотреть вместе с журналом |
 | `.cursor/rules/birthday-planner-core.mdc` | Всегда — Docker, env, краткий Telegram-флоу, подводные камни |
 | `.cursor/rules/birthday-planner-auth.mdc` | Всегда — **авторизация целиком** (Telegram, JWT cookie, Vite-прокси, 502/401, правки) |
 | `.cursor/rules/birthday-planner-agent-workflow.mdc` | Всегда — **порядок работы**: читать/дополнять `.cursor/prompt-history.md`, не зацикливаться |
 | `.cursor/prompt-history.md` | Журнал сути промтов и решений (не правило, но обязателен к чтению по workflow) |
 | `.cursor/rules/birthday-planner-backend.mdc` | Файлы `backend/**/*.py` |
 | `.cursor/rules/birthday-planner-frontend.mdc` | Файлы `frontend/**/*.ts`, `frontend/**/*.tsx` |
+
+После **каждого** промта с выполненной работой агент дополняет **`.cursor/prompt-history.md`** и при необходимости **`.cursor/rules/birthday-planner-done-base.mdc`** (см. **`birthday-planner-agent-workflow.mdc`**).
 
 Этот файл оставлен как указатель; детали дублируются только в `.mdc`, чтобы не расходились версии.
