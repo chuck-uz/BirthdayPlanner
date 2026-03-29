@@ -12,7 +12,10 @@ export function LoginPage() {
   const from = (location.state as { from?: string } | null)?.from ?? '/'
 
   if (!loading && user) {
-    return <Navigate to={from} replace />
+    const safeFrom =
+      !from || from === '/login' || from === '/setup-profile' ? '/' : from
+    const target = user.is_profile_complete ? safeFrom : '/setup-profile'
+    return <Navigate to={target} replace />
   }
 
   return (

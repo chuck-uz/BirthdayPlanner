@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { api } from '@/lib/api'
+import { setUnauthorizedHandler } from '@/lib/authSession'
 import type { UserProfile } from '@/types/user'
 
 type AuthContextValue = {
@@ -26,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const { data } = await api.get<UserProfile>('/api/auth/me')
+      const { data } = await api.get<UserProfile>('/api/users/me')
       setUser(data)
     } catch {
       setUser(null)
@@ -47,6 +48,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshUser()
   }, [refreshUser])
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null)
+      setLoading(false)
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [])
 
   const value = useMemo(
     () => ({ user, loading, refreshUser, logout }),
