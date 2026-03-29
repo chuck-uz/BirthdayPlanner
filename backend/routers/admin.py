@@ -15,11 +15,13 @@ from admin_access import get_admin_user, get_current_admin
 from birthday_utils import days_until_next_birthday, next_birthday_date
 from database import get_db
 from models import BirthdayEvent, Subscription, User, Wishlist
+from avatar_storage import delete_stored_file_if_exists
 from schemas.admin import (
     AdminBirthdayDashboardItemOut,
     AdminBroadcastLinkIn,
     AdminBroadcastLinkOut,
     AdminCreateTestUsersIn,
+    AdminDeleteAllTestUsersOut,
     AdminUserDetailOut,
     AdminUserListItemOut,
     AdminUserPatch,
@@ -100,6 +102,52 @@ async def admin_create_test_users(
         await session.flush()
         created.append(_list_item_from_user(u))
     return created
+
+
+@router.delete("/users/test", response_model=AdminDeleteAllTestUsersOut)
+async def admin_delete_all_test_users(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    _: User = Depends(get_current_admin),
+) -> AdminDeleteAllTestUsersOut:
+    """Удалить всех пользователей с is_test=true (файлы аватаров и фото вишлиста тоже)."""
+    result = await session.execute(
+        select(User)
+        .where(User.is_test.is_(True))
+        .options(selectinload(User.wishlists)),
+    )
+    users = list(result.scalars().unique().all())
+    deleted = 0
+    for u in users:
+        for w in u.wishlists:
+            delete_wishlist_file_if_exists(w.photo_path)
+        delete_stored_file_if_exists(getattr(u, "avatar_path", None))
+        await session.delete(u)
+        deleted += 1
+    await session.flush()
+    return AdminDeleteAllTestUsersOut(deleted_count=deleted)
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_user(
+    user_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    admin: User = Depends(get_current_admin),
+) -> Response:
+    if user_id == admin.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_delete_self")
+    result = await session.execute(
+        select(User)
+        .where(User.id == user_id)
+        .options(selectinload(User.wishlists)),
+    )
+    u = result.scalar_one_or_none()
+    if u is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
+    for w in u.wishlists:
+        delete_wishlist_file_if_exists(w.photo_path)
+    delete_stored_file_if_exists(getattr(u, "avatar_path", None))
+    await session.delete(u)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/users/{user_id}", response_model=AdminUserDetailOut)

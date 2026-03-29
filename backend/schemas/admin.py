@@ -73,6 +73,10 @@ class AdminCreateTestUsersIn(BaseModel):
     count: int = Field(default=1, ge=1, le=20)
 
 
+class AdminDeleteAllTestUsersOut(BaseModel):
+    deleted_count: int
+
+
 class AdminBirthdayDashboardItemOut(BaseModel):
     id: int
     full_name: str | None

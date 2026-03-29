@@ -41,3 +41,7 @@ export type AdminBroadcastLinkOut = {
   skipped_count: number
   celebration_date: string
 }
+
+export type AdminDeleteAllTestUsersOut = {
+  deleted_count: number
+}
