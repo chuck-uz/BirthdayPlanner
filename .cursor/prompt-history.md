@@ -176,3 +176,9 @@
 - **Запрос (суть):** Заменить «которое» на «который»; показывать не дату рождения из профиля, а день рождения в **текущем календарном году**.
 - **Сделано:** **`_birthday_date_in_year`**, текст с **ДД.ММ.ГГГГ** где год = `today.year`; 29.02 → 28.02 в невисокосный год.
 - **Итог для следующих сессий:** *done-base без изменений.*
+
+### 2026-03-29 — Защищённые аватары (upload, JWT, Docker volume)
+
+- **Запрос (суть):** Папка `uploads/avatars`, volume в compose, поле `avatar_path`, `PATCH /api/users/me/avatar`, `GET /api/users/{id}/avatar` с JWT, без StaticFiles на uploads.
+- **Сделано:** **`backend/uploads/avatars/.gitkeep`**, **`avatar_storage.py`** (лимит 5 МБ, JPEG/PNG по magic + Content-Type, UUID-имя, защита путей), **`User.avatar_path`**, миграция **`ALTER users.avatar_path`** в **`main`**, **`ensure_avatars_dir`** при старте. Роуты в **`users.py`**; **`UserMeOut`:** `has_avatar`, `avatar_url`. Compose: **`backend_avatars:/app/uploads/avatars`**. **`python-multipart`**, **`.gitignore`** на файлы в avatars. Тип **`UserProfile`** на фронте расширен опциональными полями.
+- **Итог для следующих сессий:** Выдача только через API; после `docker compose build` пересобрать backend для зависимостей.

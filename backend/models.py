@@ -15,6 +15,7 @@ class User(Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     birth_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    avatar_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,

@@ -36,16 +36,22 @@ class UserMeOut(BaseModel):
     full_name: str | None
     birth_date: dt.date | None
     is_profile_complete: bool
+    has_avatar: bool = False
+    avatar_url: str | None = None
 
 
 def build_user_me_out(user: User) -> UserMeOut:
     name_ok = bool(user.full_name and user.full_name.strip())
+    ap = getattr(user, "avatar_path", None)
+    has_avatar = bool(ap and str(ap).strip())
     return UserMeOut(
         id=user.id,
         telegram_id=user.telegram_id,
         full_name=user.full_name,
         birth_date=user.birth_date,
         is_profile_complete=name_ok and user.birth_date is not None,
+        has_avatar=has_avatar,
+        avatar_url=f"/api/users/{user.id}/avatar" if has_avatar else None,
     )
 
 

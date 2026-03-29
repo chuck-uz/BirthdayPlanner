@@ -4,4 +4,6 @@ export type UserProfile = {
   full_name: string | null
   birth_date: string | null
   is_profile_complete: boolean
+  has_avatar?: boolean
+  avatar_url?: string | null
 }

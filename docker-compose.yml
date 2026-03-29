@@ -62,6 +62,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - backend_avatars:/app/uploads/avatars
     networks:
       - birthday_net
 
@@ -94,3 +96,4 @@ networks:
 # Описание хранилищ: здесь Docker будет физически держать файлы базы
 volumes:
   postgres_data:
+  backend_avatars:

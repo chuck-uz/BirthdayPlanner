@@ -4,3 +4,6 @@ __pycache__/
 node_modules/
 .ds_store
 dist/
+# Загруженные аватары (структура каталога — .gitkeep в репо)
+backend/uploads/avatars/*
+!backend/uploads/avatars/.gitkeep
