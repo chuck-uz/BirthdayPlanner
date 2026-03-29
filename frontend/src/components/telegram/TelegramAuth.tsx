@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { ShieldOff } from 'lucide-react'
 
 import {
   buildTelegramAuthRedirectFromWidgetUser,
@@ -56,12 +57,23 @@ export function TelegramAuth() {
   }, [botName, authBase])
 
   if (!botName || !authBase) {
-    return <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">Вход недоступен</p>
+    return (
+      <div className="flex w-full max-w-[320px] flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300/90 bg-zinc-50/90 px-6 py-10 text-center dark:border-zinc-600 dark:bg-zinc-950/50">
+        <div className="flex size-12 items-center justify-center rounded-xl bg-zinc-200/80 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          <ShieldOff className="size-6" aria-hidden />
+        </div>
+        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Вход недоступен</p>
+      </div>
+    )
   }
 
   return (
     <div className="flex w-full max-w-[320px] flex-col items-center justify-center">
-      <div ref={widgetHostRef} className="flex min-h-[44px] w-full flex-col items-center justify-center" />
+      <div
+        className="flex w-full min-h-[52px] flex-col items-center justify-center rounded-2xl border border-zinc-200/90 bg-white/60 px-4 py-5 shadow-inner shadow-zinc-900/5 dark:border-zinc-700/80 dark:bg-zinc-950/40 dark:shadow-black/20"
+      >
+        <div ref={widgetHostRef} className="flex min-h-[40px] w-full flex-col items-center justify-center" />
+      </div>
     </div>
   )
 }
