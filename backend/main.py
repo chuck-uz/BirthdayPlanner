@@ -1,21 +1,49 @@
 """BirthdayPlanner API entrypoint."""
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 import models  # noqa: F401
+from config import get_settings
 from database import Base, engine
+from jobs.scheduler import shutdown_scheduler, start_scheduler
 from routers.telegram_auth import router as telegram_auth_router
+from routers.telegram_webhook import router as telegram_webhook_router
 from routers.users import router as users_router
+from telegram_service import telegram_set_webhook
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if "postgresql" in settings.database_url.lower():
+            try:
+                await conn.execute(
+                    text(
+                        "ALTER TABLE admin_birthday_prompts "
+                        "ADD COLUMN IF NOT EXISTS prompt_recipient_telegram_id BIGINT",
+                    ),
+                )
+            except Exception:
+                logger.warning(
+                    "Could not add prompt_recipient_telegram_id column (migrate manually if needed)",
+                    exc_info=True,
+                )
+    start_scheduler()
+    base = (settings.telegram_webhook_base_url or "").strip().rstrip("/")
+    if base:
+        webhook_url = f"{base}/api/telegram/webhook"
+        await telegram_set_webhook(webhook_url, secret_token=settings.telegram_webhook_secret)
     yield
+    shutdown_scheduler()
     await engine.dispose()
 
 
@@ -39,6 +67,7 @@ app.add_middleware(
 )
 
 app.include_router(telegram_auth_router)
+app.include_router(telegram_webhook_router)
 app.include_router(users_router)
 
 

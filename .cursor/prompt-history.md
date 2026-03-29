@@ -106,7 +106,73 @@
 - **Сделано:** **API:** `GET /api/users/{id}` (публичный профиль + вишлисты), `GET/POST/DELETE /api/users/me/wishlists`, схемы **`WishlistItemOut`**, **`WishlistCreate`**, **`UserPublicProfileOut`**. **`ProfilePage`:** вишлист с бэкенда. **`UserProfilePage`** `/users/:userId`, **`HomePage`:** карточки — ссылки. Роут в **`App.tsx`**.
 - **Итог для следующих сессий:** Вишлист хранится в таблице `wishlists`; чужой профиль только на чтение.
 
+### 2026-03-29 — Подписки на ДР, планировщик, Telegram
+
+- **Запрос (суть):** Подписка «Уведомить меня», таблица subscriptions, событие с group_id/invite_link, ежедневно 09:00 за N дней до ДР — группа или рассылка; именинник не получает; проверка /start у бота после подписки.
+- **Сделано:** **Модели:** `Subscription`, `BirthdayEvent` (уникальность target+дата празднования). **API:** `GET/POST/DELETE .../subscription`, `GET /me/telegram-delivery`. **telegram_service:** getChat, sendMessage, getMe, попытка createChat+exportChatInviteLink. **jobs:** `run_daily_birthday_reminders` (вызов за `BIRTHDAY_NOTIFY_DAYS_BEFORE`, по умолчанию **14**), APScheduler **09:00** `SCHEDULER_TIMEZONE`. **Фронт:** `BirthdayNotifyBell`, главная и профиль друга. Зависимости: **httpx**, **apscheduler**.
+- **Итог для следующих сессий:** Обычный Bot API часто **не создаёт** группы — срабатывает **fallback** личными сообщениями; именинник исключён из подписчиков на себя.
+
 ### 2026-03-29 — Минимальный UI логина
 
 - **Запрос (суть):** Синяя кнопка Telegram работает; убрать подсказки, альтернативные кнопки, Origin, блоки про Firefox/postMessage.
 - **Сделано:** **`LoginPage`:** только заголовок, виджет, ссылка «На главную», переключатель темы. **`TelegramAuth`:** только script + data-onauth; при отсутствии env — «Вход недоступен». Удалены **`publicOrigin127ForHints`**, oauth/popup fallback из UI.
+
+### 2026-03-29 — Правило: база «что уже сделано»
+
+- **Запрос (суть):** Запомнить и записать в правила базу, куда смотреть, что уже сделано.
+- **Сделано:** Файл **`.cursor/rules/birthday-planner-done-base.mdc`** (`alwaysApply: true`) — структурированный перечень реализованного функционала и ключевых путей; **`.cursorrules`** — строка в таблице; **`birthday-planner-agent-workflow.mdc`** — шаг 1 дополнен чтением done-base рядом с `prompt-history.md`.
+- **Итог для следующих сессий:** Хронология — **`prompt-history.md`**; быстрый обзор возможностей репо — **`birthday-planner-done-base.mdc`**; при крупных фичах обновлять done-base.
+
+### 2026-03-29 — После каждого промта: журнал + база
+
+- **Запрос (суть):** Пополняй базу и правила после каждого промта пользователя.
+- **Сделано:** **`birthday-planner-agent-workflow.mdc`:** пункт 2 расширен — всегда `prompt-history.md`; **`birthday-planner-done-base.mdc`** править при изменениях продукта/API/моделей/правил или строка в «Журнал обновлений базы»; иначе в журнале промта — *done-base без изменений*. **`birthday-planner-done-base.mdc`:** блок про документацию, таблица «Журнал обновлений базы». **`.cursorrules`** — напоминание в конце.
+- **Итог для следующих сессий:** Выполнять обновление базы по смыслу промта; не раздувать done-base мелочами без изменения снимка.
+
+### 2026-03-29 — Telegram при подписке: подтверждение и чат за 14 дней
+
+- **Запрос (суть):** При подписке на уведомления — сообщение в бот «вы подписались»; если ДР именинника в пределах двух недель — если группа/событие уже есть, прислать ссылку; иначе создать группу (как планировщик) и прислать ссылку.
+- **Сделано:** Модуль **`backend/birthday_notify_logic.py`** — тексты, `get_birthday_event`, `create_birthday_event_and_notify_subscribers`, `run_subscribe_telegram_followup` (окно = **`BIRTHDAY_NOTIFY_DAYS_BEFORE`**). **`jobs/birthday_notifications.py`** вызывает общую функцию. **`POST /api/users/{id}/subscription`:** после `flush` при **новой** подписке — Telegram followup; ошибки Telegram логируются, ответ API не падает.
+- **Итог для следующих сессий:** Логика события/рассылки — в `birthday_notify_logic.py`; при повторном POST подписки повторных сообщений в бот нет.
+
+### 2026-03-29 — Админ: запрос на группу, кнопки, вебхук
+
+- **Запрос (суть):** За 14 дней до ДР — найти именинника и подписчиков; бот пишет только админу (`TELEGRAM_ADMIN_ID`) текст с количеством и кнопки «Создать группу» / «Пропустить»; по «Создать» — инструкция создать группу и добавить бота админом; после добавления бота в группу — invite link и рассылка подписчикам заданным текстом.
+- **Сделано:** **`config`:** `TELEGRAM_ADMIN_ID`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_BASE_URL`. **`models.AdminBirthdayPrompt`**. **`birthday_admin_flow.py`**, **`routers/telegram_webhook.py`**. **`telegram_service`:** reply_markup, callback, edit markup, export link, get bot id, setWebhook. При заданном `TELEGRAM_ADMIN_ID` **`create_birthday_event_and_notify_subscribers`** не вызывает `createChat`, а **`ensure_admin_prompt_for_birthday`**. **`main`:** регистрация вебхука при старте если задан base URL. Текст подписчикам: **`message_gift_group_ready`**. Комментарий в **`docker-compose.yml`**.
+- **Итог для следующих сессий:** Без вебхука и HTTPS кнопки не заработают; без `TELEGRAM_ADMIN_ID` сохраняется старый авто-`createChat`/fallback.
+
+### 2026-03-29 — Убрать fallback «не удалось создать группу» в ЛС
+
+- **Запрос (суть):** При подписке приходят подтверждение и ненужное сообщение про неудачный Bot API; нет запроса админу на группу.
+- **Сделано:** **`birthday_notify_logic`:** при провале `createChat` без админа — **не** рассылать подписчикам fallback, **не** писать `BirthdayEvent`; лог warning с подсказкой про `TELEGRAM_ADMIN_ID`. **`send_event_summary_to_telegram_user`** шлёт только при реальной ссылке. **`config`:** пустой `TELEGRAM_ADMIN_ID` → `None`.
+- **Итог для следующих сессий:** Запрос админу только если в `.env` задан числовой id и бэкенд перезапущен (`get_settings` кэшируется).
+
+### 2026-03-29 — Запрос группы админу при подписке самого админа
+
+- **Запрос (суть):** После «вы подписались» не приходит сообщение о создании группы; нужно, чтобы оно приходило и когда подписывается администратор.
+- **Сделано:** **`ensure_admin_prompt_for_birthday`:** `session.flush()`, опционально **`trigger_subscriber`** (подмешивается в список подписчиков, если SELECT ещё не видит строку), **`relax_days_limit`**; в тексте админу — фактические дни до ДР. **`run_subscribe_telegram_followup`:** если `subscriber.telegram_id == TELEGRAM_ADMIN_ID`, цепочка группы/админа вызывается и **при днях > BIRTHDAY_NOTIFY_DAYS_BEFORE**. **`create_birthday_event_and_notify_subscribers`** пробрасывает `trigger_subscriber` / `relax_admin_days`; без админа — тот же merge для legacy `createChat`.
+- **Итог для следующих сессий:** `TELEGRAM_ADMIN_ID` должен совпадать с `telegram_id` пользователя в БД (тот же аккаунт, что логинится в приложение).
+
+### 2026-03-29 — Кнопки «создать группу» без TELEGRAM_ADMIN_ID
+
+- **Запрос (суть):** Подписка на «Тестовый Тест» (ДР 03.04): приходит только «вы подписались», нет предложения создать группу.
+- **Сделано:** Исправлена логика: **`ensure_admin_prompt_for_birthday` раньше сразу выходил, если `TELEGRAM_ADMIN_ID` пуст**; **`create_birthday_event` вызывал ручной поток только при заданном admin id** — в итоге без env шла ветка `createChat` и тишина. Теперь при **POST подписки** (`trigger_subscriber`) всегда включается ручной поток; получатель ЛС: **`TELEGRAM_ADMIN_ID` или, если не задан, `telegram_id` подписавшегося**. Поле **`AdminBirthdayPrompt.prompt_recipient_telegram_id`**, callback и **`my_chat_member`** завязаны на него. **`main`:** при Postgres `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+- **Итог для следующих сессий:** Если задан `TELEGRAM_ADMIN_ID`, кнопки уходят туда, а не подписчику (если это разные люди).
+
+### 2026-03-29 — Админ не получал запрос: окно 14 дней и повторная отправка
+
+- **Запрос (суть):** По-прежнему не приходит запрос админу на создание группы.
+- **Сделано:** В **`run_subscribe_telegram_followup`** при заданном **`TELEGRAM_ADMIN_ID`** цепочка **`ensure_admin_prompt`** вызывается **при любой новой подписке**, без отсечения `days > BIRTHDAY_NOTIFY_DAYS_BEFORE` (раньше при подписке не-админа за >14 дней выходили до вызова). **`relax_admin_days`** для этого случая. **`ensure_admin_prompt`:** логи при ранних выходах; при **`prompt_sent`** и **`admin_prompt_message_id is None`** — повторная отправка в Telegram; **`logger.error`** если `sendMessage` не вернул message_id.
+- **Итог для следующих сессий:** Админ должен написать боту /start; при ошибке API смотреть логи backend.
+
+### 2026-03-29 — Текст подтверждения подписки с датой ДР
+
+- **Запрос (суть):** В боте после подписки добавить дату дня рождения («… Тестовый Тест, которое будет [дата]»).
+- **Сделано:** **`subscription_confirmation_text`** в **`birthday_notify_logic.py`:** дата в формате **ДД.ММ.ГГГГ**; при отсутствии `birth_date` — прежняя однострочная формулировка.
+- **Итог для следующих сессий:** — *done-base без изменений.*
+
+### 2026-03-29 — Подтверждение подписки: «который», дата ДР в текущем году
+
+- **Запрос (суть):** Заменить «которое» на «который»; показывать не дату рождения из профиля, а день рождения в **текущем календарном году**.
+- **Сделано:** **`_birthday_date_in_year`**, текст с **ДД.ММ.ГГГГ** где год = `today.year`; 29.02 → 28.02 в невисокосный год.
+- **Итог для следующих сессий:** *done-base без изменений.*

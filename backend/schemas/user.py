@@ -25,6 +25,7 @@ class UpcomingBirthdayOut(BaseModel):
     full_name: str | None
     birth_date: dt.date
     days_until: int
+    subscribed: bool = False
 
 
 class UserMeOut(BaseModel):

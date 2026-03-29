@@ -5,8 +5,8 @@ from __future__ import annotations
 import datetime as dt
 
 
-def days_until_next_birthday(birth: dt.date, today: dt.date | None = None) -> int:
-    """Дней до ближайшего наступления month/day из даты рождения (29 фев → 28 фев в невисокосные годы)."""
+def next_birthday_date(birth: dt.date, today: dt.date | None = None) -> dt.date:
+    """Календарная дата ближайшего дня рождения (год — тот, когда ДР наступит следующим)."""
     today = today or dt.date.today()
     y = today.year
     try:
@@ -16,9 +16,14 @@ def days_until_next_birthday(birth: dt.date, today: dt.date | None = None) -> in
     if this_year < today:
         y += 1
         try:
-            nxt = dt.date(y, birth.month, birth.day)
+            return dt.date(y, birth.month, birth.day)
         except ValueError:
-            nxt = dt.date(y, 2, 28)
-    else:
-        nxt = this_year
+            return dt.date(y, 2, 28)
+    return this_year
+
+
+def days_until_next_birthday(birth: dt.date, today: dt.date | None = None) -> int:
+    """Дней до ближайшего наступления month/day из даты рождения (29 фев → 28 фев в невисокосные годы)."""
+    today = today or dt.date.today()
+    nxt = next_birthday_date(birth, today)
     return (nxt - today).days

@@ -1,0 +1,72 @@
+---
+description: База «что уже сделано» в репозитории — смотреть перед задачами, чтобы не дублировать работу
+alwaysApply: true
+---
+
+# BirthdayPlanner — база реализованного (снимок возможностей)
+
+**Хронология по промтам** — **`.cursor/prompt-history.md`**.  
+Этот файл — **снимок возможностей репозитория**. По запросу владельца и по **`birthday-planner-agent-workflow.mdc`**: после промта с правками кода/поведению — **обновлять соответствующие разделы** или строку в **«Журнал обновлений базы»** ниже; если снимок не менялся — в `prompt-history` пометить *done-base без изменений*.
+
+## Документация (правила Cursor)
+
+- **`.cursorrules`** — указатель на `.mdc` и журнал.
+- **`birthday-planner-agent-workflow.mdc`** — порядок: читать журнал + эту базу → после работы дописать журнал и при необходимости править done-base / другие `.mdc`.
+- **`birthday-planner-done-base.mdc`** — этот файл.
+
+## Стек и инфраструктура
+
+- **Backend:** FastAPI, async SQLAlchemy 2, Postgres (`asyncpg`), Pydantic Settings, JWT (python-jose), HttpOnly cookie.
+- **Frontend:** Vite 8, React 19, TS, Tailwind 4, React Router 7, axios (withCredentials).
+- **Docker:** `docker-compose.yml` — `db`, `backend` (:8000), `frontend` (**хост 80 → контейнер 5173**), `HMR_CLIENT_PORT=80`, `FRONTEND_DEFAULT_URL` для backend в compose.
+- **Переменные:** корневой `.env` — `DATABASE_URL`, `BOT_TOKEN`, `JWT_SECRET_KEY`, `FRONTEND_DEFAULT_URL`, опционально `BIRTHDAY_NOTIFY_DAYS_BEFORE`, `SCHEDULER_TIMEZONE`, **`TELEGRAM_ADMIN_ID`** (ручные группы), **`TELEGRAM_WEBHOOK_BASE_URL`**, **`TELEGRAM_WEBHOOK_SECRET`** (вебхук бота).
+
+## Авторизация (Telegram)
+
+- Вход: **официальный `telegram-widget.js`** в **`TelegramAuth`**: `data-onauth`, `data-origin`, глобальный колбэк → редирект на **`GET /api/auth/telegram`** с query как у `data-auth-url`.
+- **`telegram_auth.py`:** у маршрута Telegram **обязательно `response_model=None`** (иначе падение при старте → 502).
+- Cookie JWT, **`GET /api/users/me`**, CORS с **`http://127.0.0.1`** (без порта), `localhost`, и порты 5173/5174 для локального Vite.
+- Утилиты URL: **`frontend/src/lib/telegramLoginUrls.ts`** (`normalizeTelegramAuthBase`, `buildTelegramAuthRedirectFromWidgetUser`, …).
+
+## Пользователи и профиль
+
+- **Модели:** `User` (telegram_id, full_name, birth_date), `Wishlist`, **`Subscription`**, **`BirthdayEvent`**, **`AdminBirthdayPrompt`** (`prompt_recipient_telegram_id` — кому ушли кнопки: админ из env или подписчик при отсутствии env).
+- **Профиль:** `PATCH /api/users/me` (ФИО + дата рождения, валидация).
+- **Вишлист:** `GET/POST/DELETE /api/users/me/wishlists` — данные в БД; **`ProfilePage`** синхронизирован с API.
+- **Главная:** `GET /api/users/birthdays/upcoming` — реальные пользователи с `birth_date`, поле **`subscribed`** для текущего пользователя.
+- **Профиль именинника:** `GET /api/users/{id}` (без telegram_id чужого), вишлист только чтение; роут **`/users/:userId`**, карточки на главной — ссылки.
+
+## Подписки и уведомления о ДР
+
+- **API:** `GET/POST/DELETE /api/users/{id}/subscription`, `GET /api/users/me/telegram-delivery` (getChat + bot username).
+- **При новой подписке (`POST …/subscription`):** подтверждение в Telegram; при заданном **`TELEGRAM_ADMIN_ID`** запрос с кнопками админу — **при любой** новой подписке (без ограничения «только ≤ N дней до ДР»). Без **`TELEGRAM_ADMIN_ID`** — окно N дней и кнопки подписчику. Дальше **`BirthdayEvent`** / **`createChat`**. Повторный POST без новой подписки не шлёт сообщения.
+- **Планировщик:** **09:00** (`SCHEDULER_TIMEZONE`), за **`BIRTHDAY_NOTIFY_DAYS_BEFORE`** дней — **`run_daily_birthday_reminders`** → та же ветка **`create_birthday_event_and_notify_subscribers`** (админ или авто). **Именинник** сообщений не получает.
+- **Ручная группа (кнопки в боте):** **`birthday_admin_flow.py`** — при **подписке** запрос с кнопками уходит в **`TELEGRAM_ADMIN_ID`**, если задан, иначе **подписавшемуся** (без env кнопки всё равно работают). Ежедневная задача без env — только попытка **`createChat`**. Webhook **`POST /api/telegram/webhook`**, колонка **`prompt_recipient_telegram_id`** для проверки callback.
+- **Telegram без админа:** только **`try_create_birthday_group`**; при ошибке API подписчикам **не** шлётся текст «не удалось создать группу» — в лог warning и нужен **`TELEGRAM_ADMIN_ID`** для ручной группы.
+- **Фронт:** **`BirthdayNotifyBell`** на главной и в профиле друга; предупреждение, если пользователь не нажал Start у бота (`t.me/{username}`).
+
+## Vite / фронт dev
+
+- **`vite.config.ts`:** `host: '127.0.0.1'`, прокси `/api`; **`hmr.clientPort`** если задан **`HMR_CLIENT_PORT`** (Docker на порту 80).
+- **`envDir`:** родительский `.env` при наличии.
+
+## Вспомогательное
+
+- Скрипт тестового пользователя: **`backend/scripts/add_test_user.py`** (синтетический `telegram_id`).
+- Проверка embed (опционально): **`scripts/check-telegram-embed.mjs`**.
+
+## Что сознательно не гарантируется
+
+- **Создание группы** через стандартный Bot API часто **недоступно** — без **`TELEGRAM_ADMIN_ID`** подписчикам уходит только подтверждение подписки; ссылку даёт ручной поток админа или редкий успешный `createChat`.
+- Ошибки **`postMessage`** на **`oauth.telegram.org`** в консоли Firefox — со стороны Telegram, не приложения.
+
+## Журнал обновлений базы (кратко)
+
+| Дата | Что отразили |
+|------|----------------|
+| 2026-03-29 | Создан done-base, разделы документации и журнал; правило: после рабочего промта всегда `prompt-history.md`, done-base — при изменении продукта/правил (подробнее в `birthday-planner-agent-workflow.mdc`). |
+| 2026-03-29 | Подписка: Telegram подтверждение + при ДР в окне N дней — ссылка/создание группы через **`birthday_notify_logic.py`**. |
+| 2026-03-29 | Админ-режим: **`TELEGRAM_ADMIN_ID`**, **`AdminBirthdayPrompt`**, вебхук **`/api/telegram/webhook`**, ручная группа + рассылка ссылки подписчикам. |
+| 2026-03-29 | Без админа при ошибке `createChat` подписчикам **не** шлются тексты-заглушки; пустой **`TELEGRAM_ADMIN_ID`** в `.env` трактуется как отсутствие. |
+| 2026-03-29 | Подписка пользователя с **`telegram_id == TELEGRAM_ADMIN_ID`:** запрос на группу и вне окна N дней; **`trigger_subscriber`** + flush в админ-потоке. |
+| 2026-03-29 | Ручной поток при подписке без **`TELEGRAM_ADMIN_ID`** — кнопки подписчику; **`prompt_recipient_telegram_id`**; миграция колонки в **`main`**. |
