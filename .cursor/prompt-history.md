@@ -193,3 +193,11 @@
   - **`UserProfilePage`:** тот же **`BotStartModal`** / **`isBotActive`**, **`refreshUser`** после delivery; у карточки вишлиста **`id="wishlist"`** + **`scroll-mt-24`** для якоря с главной.
   - **Типы:** **`UserProfile.is_bot_active`** в **`types/user.ts`**.
 - **Итог для следующих сессий:** Подписка на уведомления по UX завязана на **`me.is_bot_active`**; флаг поднимается **`/start`** у бота или успешным **`getChat`** на delivery; календарь — только клиентская ссылка на `calendar.google.com` с `action=TEMPLATE`.
+
+### 2026-03-29 — Вишлист с фото референса (карточки, Pillow, защищённая выдача)
+
+- **Запрос (суть):** Пункты вишлиста как карточки «как в магазине»: название, описание, ссылка, опциональное фото; хранение в **`uploads/wishlist/`**, выдача только по API с JWT; сжатие изображений до 800px (**Pillow**); модалка добавления/редактирования с превью на фронте.
+- **Сделано:**
+  - **Backend:** модель **`Wishlist`**: **`description`**, **`link_url`**, **`photo_path`**; **`ALTER wishlists`** в **`main.py`**; **`wishlist_storage.py`** (валидация JPEG/PNG, 5 МБ, ресайз, UUID-имена); **`POST/PATCH /api/users/me/wishlists`** — **`multipart/form-data`**, **`PATCH`** с **`clear_photo`**; **`GET /api/wishlists/{item_id}/photo`** — роутер **`routers/wishlists.py`**; удаление файла при **DELETE** и замене фото; зависимость **`pillow`**; volume **`backend_wishlist_photos`** в compose; **`schemas/wishlist`**: **`WishlistItemOut`**, **`build_wishlist_item_out`**, **`parse_optional_link_url`** (**`HttpUrl`**).
+  - **Frontend:** **`WishlistItemCard`**, **`WishlistItemModal`**, **`wishlistPhotoUrl`**; **`ProfilePage`** / **`UserProfilePage`**; тип **`WishlistItem`** с **`has_photo`**, **`description`**, **`link_url`**; внешние ссылки **«Где купить»** с **`noopener noreferrer`**.
+- **Итог для следующих сессий:** Старый JSON-only **`POST …/wishlists` с `{title}`** заменён на **multipart**; фото вишлиста не отдаются через StaticFiles — только **`/api/wishlists/{id}/photo`**; после обновления бэкенда нужны **Pillow** и том **`wishlist`** в Docker.

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ListPlus, Trash2, Upload, UserRound } from 'lucide-react'
+import { Gift, Plus, Upload, UserRound } from 'lucide-react'
 
+import { WishlistItemCard } from '@/components/wishlist/WishlistItemCard'
+import { WishlistItemModal } from '@/components/wishlist/WishlistItemModal'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,8 +36,10 @@ export function ProfilePage() {
   const [avatarImgFailed, setAvatarImgFailed] = useState(false)
   const [items, setItems] = useState<WishlistItem[]>([])
   const [wishLoading, setWishLoading] = useState(true)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [wishPhotoRev, setWishPhotoRev] = useState(0)
+  const [wishModalOpen, setWishModalOpen] = useState(false)
+  const [wishModalMode, setWishModalMode] = useState<'create' | 'edit'>('create')
+  const [wishModalItem, setWishModalItem] = useState<WishlistItem | null>(null)
 
   const loadWishlists = useCallback(async () => {
     setWishLoading(true)
@@ -96,20 +100,28 @@ export function ProfilePage() {
     }
   }
 
-  const addItem = async () => {
-    const title = draft.trim()
-    if (!title || saving) return
-    setSaving(true)
-    try {
-      const { data } = await api.post<WishlistItem>('/api/users/me/wishlists', { title })
-      setItems((prev) => [data, ...prev])
-      setDraft('')
-    } finally {
-      setSaving(false)
-    }
+  const openCreateWishlist = () => {
+    setWishModalMode('create')
+    setWishModalItem(null)
+    setWishModalOpen(true)
   }
 
-  const remove = async (id: number) => {
+  const openEditWishlist = (item: WishlistItem) => {
+    setWishModalMode('edit')
+    setWishModalItem(item)
+    setWishModalOpen(true)
+  }
+
+  const onWishSaved = (item: WishlistItem, mode: 'create' | 'edit') => {
+    if (mode === 'create') {
+      setItems((prev) => [item, ...prev])
+    } else {
+      setItems((prev) => prev.map((x) => (x.id === item.id ? item : x)))
+    }
+    setWishPhotoRev((r) => r + 1)
+  }
+
+  const removeWishlist = async (id: number) => {
     try {
       await api.delete(`/api/users/me/wishlists/${id}`)
       setItems((prev) => prev.filter((x) => x.id !== id))
@@ -120,6 +132,14 @@ export function ProfilePage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <WishlistItemModal
+        open={wishModalOpen}
+        mode={wishModalMode}
+        initial={wishModalItem}
+        photoRev={wishPhotoRev}
+        onClose={() => setWishModalOpen(false)}
+        onSaved={onWishSaved}
+      />
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-white">
           Личный кабинет
@@ -129,8 +149,8 @@ export function ProfilePage() {
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+      <div className="grid gap-6 lg:grid-cols-2 lg:grid-rows-[auto_auto]">
+        <Card className="lg:row-start-1">
           <CardHeader>
             <CardTitle>Профиль</CardTitle>
           </CardHeader>
@@ -220,62 +240,44 @@ export function ProfilePage() {
           </dl>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Вишлист</CardTitle>
-            <CardDescription>Желания для друзей</CardDescription>
-          </CardHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-2">
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void addItem()}
-                placeholder="Новый пункт…"
-                disabled={saving}
-                className="flex-1 rounded-xl border border-zinc-200/80 bg-white/60 px-3 py-2 text-sm text-zinc-900 shadow-inner outline-none ring-orange-500/25 placeholder:text-zinc-400 focus:border-orange-500 focus:ring-2 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950/40 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-              />
-              <Button
-                type="button"
-                onClick={() => void addItem()}
-                disabled={saving}
-                className="shrink-0 gap-1"
-              >
-                <ListPlus className="size-4" aria-hidden />
-                Добавить
-              </Button>
+        <Card className="lg:col-span-2 lg:row-start-2">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Вишлист</CardTitle>
+              <CardDescription>Желания для друзей — с фото и ссылкой на магазин</CardDescription>
             </div>
-            {wishLoading ? (
+            <Button type="button" onClick={openCreateWishlist} className="shrink-0 gap-1.5 self-start sm:self-auto">
+              <Plus className="size-4" aria-hidden />
+              Добавить подарок
+            </Button>
+          </CardHeader>
+          {wishLoading ? (
+            <div className="px-6 pb-8">
               <div className="rounded-xl border border-zinc-200/60 py-10 text-center text-sm text-zinc-500 dark:border-zinc-800">
                 Загрузка…
               </div>
-            ) : (
-              <ul className="space-y-2">
-                {items.length === 0 ? (
-                  <li className="rounded-xl border border-dashed border-zinc-300/80 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                    Пока пусто — добавьте первый пункт.
-                  </li>
-                ) : (
-                  items.map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-white/40 bg-white/40 px-3 py-2.5 text-sm dark:border-white/10 dark:bg-zinc-950/30"
-                    >
-                      <span className="text-zinc-800 dark:text-zinc-200">{item.title}</span>
-                      <button
-                        type="button"
-                        onClick={() => void remove(item.id)}
-                        className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
-                        aria-label="Удалить"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </li>
-                  ))
-                )}
-              </ul>
-            )}
-          </div>
+            </div>
+          ) : items.length === 0 ? (
+            <div className="px-6 pb-8">
+              <div className="flex flex-col items-center rounded-2xl border border-dashed border-zinc-300/90 py-14 text-center dark:border-zinc-700">
+                <Gift className="mb-3 size-10 text-zinc-400 dark:text-zinc-500" aria-hidden />
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">Пока пусто — добавьте первый подарок.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 px-6 pb-8 sm:grid-cols-2 lg:grid-cols-3">
+              {items.map((item) => (
+                <WishlistItemCard
+                  key={item.id}
+                  item={item}
+                  photoRev={wishPhotoRev}
+                  variant="owner"
+                  onEdit={openEditWishlist}
+                  onDelete={(id) => void removeWishlist(id)}
+                />
+              ))}
+            </div>
+          )}
         </Card>
       </div>
     </div>

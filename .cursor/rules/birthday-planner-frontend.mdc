@@ -34,8 +34,9 @@ alwaysApply: false
 ## Страницы и данные
 
 - **`SetupProfilePage`** — ФИО + `input type="date"`, `PATCH /api/users/me`, затем `refreshUser`
-- **`HomePage`** — `GET /api/users/birthdays/upcoming`, скелетоны/пустое состояние; карточки: аватар с **`/api/users/{id}/avatar`**, ФИО, дата (**`formatAnnualBirthdayRu`** и т.д. в **`birthdayFormat.ts`**), ссылки **Профиль** / **Вишлист** (`/users/:id#wishlist`), **`BirthdayNotifyBell`** (**`isBotActive`** = **`me?.is_bot_active`**, **`onOpenBotHint`** → **`BotStartModal`**), кнопка **Google Календарь** — **`buildGoogleCalendarBirthdayUrl`**
-- **`ProfilePage`** (`/profile`) — свой профиль, вишлист через API
-- **`UserProfilePage`** (`/users/:userId`) — чужой профиль; **`id="wishlist"`** на блоке вишлиста для якоря; тот же паттерн **`BotStartModal`** + **`refreshUser()`** после **`GET /me/telegram-delivery`**
+- **`HomePage`** — `GET /api/users/birthdays/upcoming`, скелетоны/пустое состояние; карточки: аватар **`/api/users/{id}/avatar`**, ФИО, дата (**`birthdayFormat.ts`**), ссылка **Вишлист** (`/users/:id#wishlist`), **`BirthdayNotifyBell`**, **`BotStartModal`**, **Google Календарь** — **`buildGoogleCalendarBirthdayUrl`**
+- **`ProfilePage`** (`/profile`) — профиль + аватар; вишлист: сетка **`WishlistItemCard`**, добавление/редактирование в **`WishlistItemModal`** (**`multipart`** через **`fetch`**), типы **`WishlistItem`** в **`types/publicUser.ts`**
+- **`UserProfilePage`** (`/users/:userId`) — чужой профиль; **`id="wishlist"`** + **`scroll-mt-24`**; вишлист — только просмотр **`WishlistItemCard`** (`variant="public"`); **`BotStartModal`** + **`refreshUser()`** после **`GET /me/telegram-delivery`**
+- **`wishlistPhotoUrl`** — `frontend/src/lib/wishlistPhotoUrl.ts` → **`GET /api/wishlists/{id}/photo`**
 - **`BotStartModal`** — `frontend/src/components/bot/BotStartModal.tsx`
 - **`BirthdayNotifyBell`** — `frontend/src/components/birthday/BirthdayNotifyBell.tsx`; без активного бота подписка disabled до **`/start`**
