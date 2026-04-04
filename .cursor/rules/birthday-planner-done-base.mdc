@@ -18,7 +18,7 @@ alwaysApply: true
 
 - **Backend:** FastAPI, async SQLAlchemy 2, Postgres (`asyncpg`), Pydantic Settings, JWT (python-jose), HttpOnly cookie.
 - **Frontend:** Vite 8, React 19, TS, Tailwind 4, React Router 7, axios (withCredentials).
-- **Docker:** `docker-compose.yml` — `db`, `backend` (:8000), `frontend` (**хост 80 → контейнер 5173**), `HMR_CLIENT_PORT=80`, `FRONTEND_DEFAULT_URL` для backend в compose; volumes **`backend_avatars`** → `/app/uploads/avatars`, **`backend_wishlist_photos`** → `/app/uploads/wishlist`.
+- **Docker:** `docker-compose.yml` — `db`, `backend` (:8000), `frontend` (**хост 80 → контейнер 5173**), `HMR_CLIENT_PORT=80`, `FRONTEND_DEFAULT_URL` для backend в compose; volumes **`backend_avatars`** → `/app/uploads/avatars`, **`backend_wishlist_photos`** → `/app/uploads/wishlist`. Образы: **`backend/Dockerfile`** — `python:3.12-alpine` + runtime для Pillow; **`frontend/Dockerfile`** — multi-stage, по умолчанию **development** (Vite dev); опционально **`docker build --target production`** — `nginx:1.27-alpine`, статика и прокси **`/api/`** → `http://backend:8000` (`frontend/nginx-docker.conf`); **`backend/.dockerignore`**.
 - **Переменные:** корневой `.env` — `DATABASE_URL`, `BOT_TOKEN`, `JWT_SECRET_KEY`, `FRONTEND_DEFAULT_URL`, опционально `BIRTHDAY_NOTIFY_DAYS_BEFORE`, `SCHEDULER_TIMEZONE`, **`TELEGRAM_ADMIN_ID`** (ручные группы в боте **и** веб-админка: `is_admin` в `/api/users/me`, API **`/api/admin/*`**), **`TELEGRAM_WEBHOOK_BASE_URL`**, **`TELEGRAM_WEBHOOK_SECRET`** (вебхук бота).
 
 ## Авторизация (Telegram)
@@ -81,3 +81,4 @@ alwaysApply: true
 | 2026-03-29 | Вишлист с фото референса: поля **`description`**, **`link_url`**, **`photo_path`**; **`wishlist_storage`** + **Pillow**; **`GET /api/wishlists/{id}/photo`**; volume **`backend_wishlist_photos`**; UI **`WishlistItemCard`**, **`WishlistItemModal`**, **`wishlistPhotoUrl`**. |
 | 2026-03-29 | **`/profile/settings`**, **`ToastContext`**, навигация «Настройки» в шапке; аватар с иконкой камеры на **`ProfilePage`**; **`profileValidation.ts`**. |
 | 2026-03-29 | Админ-панель: **`users.is_blocked`**, **`/api/admin/*`**, **`is_admin`** в **`UserMeOut`**; блокировка и UX **`account_blocked`** (toast/логин). |
+| 2026-04-04 | Docker: backend на **Alpine**; frontend multi-stage, цель **production** (nginx + SPA + прокси API). |

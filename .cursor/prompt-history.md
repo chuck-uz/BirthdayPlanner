@@ -258,3 +258,9 @@
 - **Запрос (суть):** Убрать кнопку «удалить всех пользователей»; оставить удаление профиля по одному для каждого пользователя в списке.
 - **Сделано:** Удалён массовый endpoint `DELETE /api/admin/users/all` и UI «Опасная зона». Добавлен `DELETE /api/admin/users/{id}` (только админ, нельзя удалить себя, удаляет файлы аватара/вишлистов). На `AdminUsersPage` в таблице добавлена колонка «Удаление» с кнопкой `Удалить` напротив каждого пользователя.
 - **Итог для следующих сессий:** Удаление профилей выполняется только точечно из таблицы пользователей.
+
+### 2026-04-04 — Dockerfile на Alpine, оптимизация образов
+
+- **Запрос (суть):** Сгенерировать Dockerfile с учётом `package.json`, лёгкие образы на базе Alpine.
+- **Сделано:** **`backend/Dockerfile`** — `python:3.12-alpine`, runtime `libjpeg-turbo`/`freetype` для Pillow, pip без кэша; **`backend/.dockerignore`**. **`frontend/Dockerfile`** — стадия **deps** + **development** по умолчанию (как compose: `npm run dev` + Vite); стадии **builder** + **production** (`nginx:1.27-alpine`, `npm run build`, **`frontend/nginx-docker.conf`** — SPA + прокси `/api/` на `backend:8000`); опциональные build-arg для `VITE_*`. Проверка: `docker build` backend и frontend (default и `--target production`).
+- **Итог для следующих сессий:** Compose без изменений собирает dev-фронт; прод-статика — `docker build --target production` у frontend и сеть с хостом `backend`.
