@@ -263,4 +263,10 @@
 
 - **Запрос (суть):** Сгенерировать Dockerfile с учётом `package.json`, лёгкие образы на базе Alpine.
 - **Сделано:** **`backend/Dockerfile`** — `python:3.12-alpine`, runtime `libjpeg-turbo`/`freetype` для Pillow, pip без кэша; **`backend/.dockerignore`**. **`frontend/Dockerfile`** — стадия **deps** + **development** по умолчанию (как compose: `npm run dev` + Vite); стадии **builder** + **production** (`nginx:1.27-alpine`, `npm run build`, **`frontend/nginx-docker.conf`** — SPA + прокси `/api/` на `backend:8000`); опциональные build-arg для `VITE_*`. Проверка: `docker build` backend и frontend (default и `--target production`).
-- **Итог для следующих сессий:** Compose без изменений собирает dev-фронт; прод-статика — `docker build --target production` у frontend и сеть с хостом `backend`.
+- **Итог для следующих сессий:** Compose собирает dev-фронт; прод-статика — см. корневой `Dockerfile`, target **`frontend-production`**.
+
+### 2026-04-04 — Один Dockerfile в корне для фронта и бэка
+
+- **Запрос (суть):** Единый файл в корне для backend и frontend.
+- **Сделано:** Корневой **`Dockerfile`** (targets **`backend`**, **`frontend-development`**, **`frontend-production`**), **`docker-compose.yml`** — `context: .`, `target` для сервисов; **`/.dockerignore`**. Удалены **`backend/Dockerfile`**, **`frontend/Dockerfile`**, локальные **`.dockerignore`** в подпапках. Прод-образ фронта: `docker build --target frontend-production .`
+- **Итог для следующих сессий:** Сборка только из корня репозитория; отдельные Dockerfiles в `backend/`/`frontend/` больше не используются.
