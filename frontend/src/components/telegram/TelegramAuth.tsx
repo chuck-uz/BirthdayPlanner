@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ShieldOff } from 'lucide-react'
 
 import {
@@ -26,6 +26,7 @@ export function TelegramAuth() {
   const authRaw = import.meta.env.VITE_TELEGRAM_AUTH_URL?.trim() ?? ''
   const authBase = authRaw ? normalizeTelegramAuthBase(authRaw) : ''
   const widgetHostRef = useRef<HTMLDivElement>(null)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (!botName || !authBase || !widgetHostRef.current) return
@@ -46,8 +47,11 @@ export function TelegramAuth() {
     script.src = TELEGRAM_WIDGET_SCRIPT
     script.setAttribute('data-telegram-login', botName)
     script.setAttribute('data-size', 'large')
+    script.setAttribute('data-radius', '12')
+    script.setAttribute('data-lang', 'ru')
     script.setAttribute('data-onauth', `${WIDGET_ON_AUTH_GLOBAL}(user)`)
     script.setAttribute('data-origin', window.location.origin)
+    script.onload = () => setReady(true)
     hostEl.appendChild(script)
 
     return () => {
@@ -68,12 +72,22 @@ export function TelegramAuth() {
   }
 
   return (
-    <div className="flex w-full max-w-[320px] flex-col items-center justify-center">
-      <div
-        className="flex w-full min-h-[52px] flex-col items-center justify-center rounded-2xl border border-zinc-200/90 bg-white/60 px-4 py-5 shadow-inner shadow-zinc-900/5 dark:border-zinc-700/80 dark:bg-zinc-950/40 dark:shadow-black/20"
-      >
-        <div ref={widgetHostRef} className="flex min-h-[40px] w-full flex-col items-center justify-center" />
+    <div className="flex w-full max-w-[320px] flex-col items-center gap-3">
+      <div className="relative flex min-h-[48px] w-full items-center justify-center">
+        {!ready ? (
+          <div
+            className="absolute inset-0 animate-pulse rounded-xl bg-zinc-100 dark:bg-zinc-800"
+            aria-hidden
+          />
+        ) : null}
+        <div
+          ref={widgetHostRef}
+          className={`flex w-full flex-col items-center justify-center transition-opacity duration-300 ${
+            ready ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
       </div>
+      <p className="text-xs text-zinc-500 dark:text-zinc-500">Быстрый и безопасный вход без пароля</p>
     </div>
   )
 }
