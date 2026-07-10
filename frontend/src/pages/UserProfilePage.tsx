@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, CalendarDays, Gift, ListChecks } from 'lucide-react'
 
 import { WishlistItemCard } from '@/components/wishlist/WishlistItemCard'
 import { Link, useParams } from 'react-router-dom'
 
 import { BotStartModal } from '@/components/bot/BotStartModal'
-import { BirthdayNotifyBell } from '@/components/birthday/BirthdayNotifyBell'
+import { GroupSubscribeBell } from '@/components/birthday/GroupSubscribeBell'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/AuthContext'
 import { api } from '@/lib/api'
 import { formatBirthDateLongRu } from '@/lib/birthdayFormat'
 import type { UserPublicProfile } from '@/types/publicUser'
-import type { SubscriptionState, TelegramDelivery } from '@/types/subscription'
+import type { GroupSubscriptionState } from '@/types/groupSubscription'
+import type { TelegramDelivery } from '@/types/telegramDelivery'
 
 function displayName(p: UserPublicProfile): string {
   const n = p.full_name?.trim()
@@ -27,18 +28,10 @@ export function UserProfilePage() {
   const [error, setError] = useState<string | null>(null)
   const [delivery, setDelivery] = useState<TelegramDelivery | null>(null)
   const [subscribed, setSubscribed] = useState(false)
+  const [canSubscribe, setCanSubscribe] = useState(false)
   const [botModalOpen, setBotModalOpen] = useState(false)
 
   const idNum = userId ? Number.parseInt(userId, 10) : NaN
-
-  const patchDelivery = useCallback((patch: Partial<TelegramDelivery>) => {
-    setDelivery((d) => ({
-      can_receive_bot_messages:
-        patch.can_receive_bot_messages ?? d?.can_receive_bot_messages ?? true,
-      bot_username:
-        patch.bot_username !== undefined ? patch.bot_username : (d?.bot_username ?? null),
-    }))
-  }, [])
 
   useEffect(() => {
     if (!userId || Number.isNaN(idNum) || idNum < 1) {
@@ -78,6 +71,7 @@ export function UserProfilePage() {
     if (!profile || isSelf) {
       setDelivery(null)
       setSubscribed(false)
+      setCanSubscribe(false)
       return
     }
     let cancelled = false
@@ -85,17 +79,19 @@ export function UserProfilePage() {
       try {
         const [dRes, sRes] = await Promise.all([
           api.get<TelegramDelivery>('/api/users/me/telegram-delivery'),
-          api.get<SubscriptionState>(`/api/users/${profile.id}/subscription`),
+          api.get<GroupSubscriptionState>(`/api/users/${profile.id}/group-subscription`),
         ])
         if (!cancelled) {
           setDelivery(dRes.data)
           setSubscribed(sRes.data.subscribed)
+          setCanSubscribe(sRes.data.can_subscribe)
           void refreshUser()
         }
       } catch {
         if (!cancelled) {
           setDelivery({ can_receive_bot_messages: false, bot_username: null })
           setSubscribed(false)
+          setCanSubscribe(false)
         }
       }
     })()
@@ -136,13 +132,13 @@ export function UserProfilePage() {
                 </p>
               </div>
               {!isSelf && delivery ? (
-                <BirthdayNotifyBell
+                <GroupSubscribeBell
                   targetUserId={profile.id}
                   subscribed={subscribed}
+                  canSubscribe={canSubscribe}
                   delivery={delivery}
                   isBotActive={isBotActive}
                   onSubscribedChange={setSubscribed}
-                  onDeliveryPatch={patchDelivery}
                   onOpenBotHint={() => setBotModalOpen(true)}
                 />
               ) : null}

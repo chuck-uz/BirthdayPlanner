@@ -1,29 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, BellRing, Loader2 } from 'lucide-react'
 
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import type { SubscriptionState, TelegramDelivery } from '@/types/subscription'
+import type { TelegramDelivery } from '@/types/telegramDelivery'
 
 type Props = {
   targetUserId: number
   subscribed: boolean
+  canSubscribe: boolean
   delivery: TelegramDelivery | null
-  /** Из БД: пользователь нажал /start у бота (или синхронизировано через getChat). */
   isBotActive: boolean
   onSubscribedChange: (subscribed: boolean) => void
-  onDeliveryPatch: (patch: Partial<TelegramDelivery>) => void
   onOpenBotHint?: () => void
+  compact?: boolean
 }
 
-export function BirthdayNotifyBell({
+export function GroupSubscribeBell({
   targetUserId,
   subscribed: initialSubscribed,
+  canSubscribe,
   delivery,
   isBotActive,
   onSubscribedChange,
-  onDeliveryPatch,
   onOpenBotHint,
+  compact = false,
 }: Props) {
   const [subscribed, setSubscribed] = useState(initialSubscribed)
   const [busy, setBusy] = useState(false)
@@ -32,16 +33,6 @@ export function BirthdayNotifyBell({
     setSubscribed(initialSubscribed)
   }, [initialSubscribed])
 
-  const mergeDelivery = useCallback(
-    (s: SubscriptionState) => {
-      onDeliveryPatch({
-        can_receive_bot_messages: s.can_receive_bot_messages,
-        bot_username: s.bot_username,
-      })
-    },
-    [onDeliveryPatch],
-  )
-
   const subscribe = async () => {
     if (!isBotActive) {
       onOpenBotHint?.()
@@ -49,12 +40,9 @@ export function BirthdayNotifyBell({
     }
     setBusy(true)
     try {
-      const { data } = await api.post<SubscriptionState>(
-        `/api/users/${targetUserId}/subscription`,
-      )
+      await api.post(`/api/users/${targetUserId}/group-subscription`)
       setSubscribed(true)
       onSubscribedChange(true)
-      mergeDelivery(data)
     } finally {
       setBusy(false)
     }
@@ -63,7 +51,7 @@ export function BirthdayNotifyBell({
   const unsubscribe = async () => {
     setBusy(true)
     try {
-      await api.delete(`/api/users/${targetUserId}/subscription`)
+      await api.delete(`/api/users/${targetUserId}/group-subscription`)
       setSubscribed(false)
       onSubscribedChange(false)
     } finally {
@@ -71,9 +59,12 @@ export function BirthdayNotifyBell({
     }
   }
 
+  if (!canSubscribe) return null
+
   const canReceive = delivery?.can_receive_bot_messages ?? true
   const botUser = delivery?.bot_username
   const blockSubscribe = !subscribed && !isBotActive
+  const sizeClass = compact ? 'px-2.5 py-1.5 text-xs' : 'px-3 py-2 text-xs'
 
   return (
     <div className="flex flex-col items-stretch gap-1.5">
@@ -82,7 +73,8 @@ export function BirthdayNotifyBell({
           type="button"
           variant="outline"
           disabled={busy}
-          className="gap-1.5 border-orange-200/80 bg-orange-50/80 px-3 py-2 text-xs text-orange-900 hover:bg-orange-100/90 dark:border-orange-900/50 dark:bg-orange-950/40 dark:text-orange-100 dark:hover:bg-orange-950/70"
+          title="Уведомления о ДР включены"
+          className={`gap-1.5 border-orange-200/80 bg-orange-50/80 text-orange-900 hover:bg-orange-100/90 dark:border-orange-900/50 dark:bg-orange-950/40 dark:text-orange-100 dark:hover:bg-orange-950/70 ${sizeClass}`}
           onClick={() => void unsubscribe()}
         >
           {busy ? (
@@ -90,7 +82,7 @@ export function BirthdayNotifyBell({
           ) : (
             <BellRing className="size-4" aria-hidden />
           )}
-          Уведомления вкл.
+          {compact ? null : 'Уведомления вкл.'}
         </Button>
       ) : (
         <>
@@ -98,7 +90,8 @@ export function BirthdayNotifyBell({
             type="button"
             variant="primary"
             disabled={busy || blockSubscribe}
-            className="gap-1.5 px-3 py-2 text-xs"
+            title="Подписаться на уведомление о ДР"
+            className={`gap-1.5 ${sizeClass}`}
             onClick={() => void subscribe()}
           >
             {busy ? (
@@ -106,9 +99,9 @@ export function BirthdayNotifyBell({
             ) : (
               <Bell className="size-4" aria-hidden />
             )}
-            Подписаться
+            {compact ? null : 'Подписаться'}
           </Button>
-          {blockSubscribe ? (
+          {blockSubscribe && !compact ? (
             <button
               type="button"
               onClick={() => onOpenBotHint?.()}
@@ -119,7 +112,7 @@ export function BirthdayNotifyBell({
           ) : null}
         </>
       )}
-      {subscribed && !canReceive ? (
+      {subscribed && !canReceive && !compact ? (
         <p className="text-[0.65rem] leading-snug text-amber-800 dark:text-amber-200">
           Нажмите «Старт» у бота в Telegram, иначе напоминание не дойдёт.
           {botUser ? (
