@@ -1,7 +1,8 @@
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -31,9 +32,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = Field(default=False, alias="COOKIE_SECURE")
     cookie_samesite: str = Field(default="lax", alias="COOKIE_SAMESITE")
 
-    # Разрешённые Origin для CORS (список через запятую в CORS_ALLOW_ORIGINS).
-    # По умолчанию — локальная разработка; в проде задайте реальный домен.
-    cors_allow_origins: list[str] = Field(
+    # Разрешённые Origin для CORS (через запятую или JSON-массив в CORS_ALLOW_ORIGINS).
+    # NoDecode: иначе pydantic-settings пытается json.loads до валидатора и падает на
+    # обычной строке вида https://example.com (типично для DockHost/env без JSON).
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: [
             "http://127.0.0.1",
             "http://localhost",
@@ -78,9 +80,21 @@ class Settings(BaseSettings):
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, v: object) -> object:
-        """Позволяет задавать список одной строкой через запятую в .env."""
+        """Строка через запятую, JSON-массив или уже list."""
         if isinstance(v, str):
-            return [item.strip() for item in v.split(",") if item.strip()]
+            raw = v.strip()
+            if not raw:
+                return []
+            if raw.startswith("["):
+                import json
+
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            return [item.strip() for item in raw.split(",") if item.strip()]
         return v
 
 
