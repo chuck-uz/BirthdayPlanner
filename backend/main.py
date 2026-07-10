@@ -15,7 +15,6 @@ from jobs.scheduler import shutdown_scheduler, start_scheduler
 from ratelimit import limiter
 from routers.telegram_auth import router as telegram_auth_router
 from routers.telegram_webhook import router as telegram_webhook_router
-from routers.admin import router as admin_router
 from routers.private_groups import router as private_groups_router
 from routers.users import router as users_router
 from routers.wishlists import router as wishlists_router
@@ -57,7 +56,6 @@ app.add_middleware(
 
 app.include_router(telegram_auth_router)
 app.include_router(telegram_webhook_router)
-app.include_router(admin_router)
 app.include_router(private_groups_router)
 app.include_router(users_router)
 app.include_router(wishlists_router)

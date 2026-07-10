@@ -215,16 +215,6 @@ export function ProfilePage() {
                   </Link>
                   .
                 </p>
-                {user?.is_admin ? (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    <Link
-                      to="/admin/dashboard"
-                      className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
-                    >
-                      Админ-панель
-                    </Link>
-                  </p>
-                ) : null}
               </div>
             </div>
           </div>

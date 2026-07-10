@@ -20,7 +20,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from admin_access import user_is_app_admin
 from birthday_notify_logic import run_subscribe_followup_task
 from birthday_utils import days_until_next_birthday
 from database import get_db
@@ -251,7 +250,7 @@ async def get_subscription_status(
     target = await session.get(User, target_user_id)
     if target is None or target.birth_date is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    if target.is_blocked and not user_is_app_admin(user):
+    if target.is_blocked:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
     row = await session.execute(
         select(Subscription).where(
@@ -279,7 +278,7 @@ async def create_subscription(
     target = await session.get(User, target_user_id)
     if target is None or target.birth_date is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    if target.is_blocked and not user_is_app_admin(user):
+    if target.is_blocked:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
     row = await session.execute(
         select(Subscription).where(
@@ -353,7 +352,7 @@ async def get_user_avatar(
     target = await session.get(User, user_id)
     if target is None or not (target.avatar_path and str(target.avatar_path).strip()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
-    if target.is_blocked and not user_is_app_admin(viewer):
+    if target.is_blocked:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
     try:
         path = avatar_store.filesystem_path(target.avatar_path)
@@ -384,6 +383,6 @@ async def get_user_public_profile(
     u = result.scalar_one_or_none()
     if u is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
-    if bool(getattr(u, "is_blocked", False)) and not user_is_app_admin(viewer):
+    if bool(getattr(u, "is_blocked", False)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
     return _public_profile_from_user(u)
