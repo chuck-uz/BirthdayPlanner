@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **Private groups**: invite-only groups with `admin`/`member` roles, a
+  revocable invite link (`groups`, `group_invites`, `user_groups` tables),
+  and a daily job that notifies group admins ahead of a member's birthday —
+  falling back to notifying every member 7 days out when the birthday person
+  is the group's only admin (`group_birthday_notifications` for idempotency).
 - Project documentation and presentation: bilingual `README.md` / `README.en.md`,
   `ARCHITECTURE.md`, `CONTRIBUTING.md`, this changelog, `LICENSE` (MIT),
   `.env.example`, and a GitHub Pages landing under `docs/`.
@@ -19,6 +24,12 @@ All notable changes to this project are documented here. The format is based on
 - `CORS_ALLOW_ORIGINS` environment variable.
 
 ### Changed
+- Flattened the app shell to a solid white/dark background, dropping the
+  decorative gradient blobs behind every page; `Card` and the ghost `Button`
+  variant now use plain borders instead of translucent glass panels.
+- Polished the Telegram login widget: rounded corners to match the app,
+  forced Russian copy, removed the redundant bordered box around it, and
+  added a loading skeleton instead of a pop-in.
 - The admin DM group flow now persists its pending invite link in the database
   (`admin_birthday_prompts.pending_invite_link`) instead of in-process memory —
   survives restarts and multiple workers.
