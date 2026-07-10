@@ -9,3 +9,6 @@ backend/uploads/avatars/*
 !backend/uploads/avatars/.gitkeep
 backend/uploads/wishlist/*
 !backend/uploads/wishlist/.gitkeep
+# Cursor IDE (правила и журнал — вне репозитория)
+.cursor/
+.cursorrules

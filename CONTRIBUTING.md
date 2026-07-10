@@ -27,7 +27,6 @@ frontend/           React 19 + Vite + Tailwind SPA
   nginx-docker.conf         SPA + /api proxy for the production image
 Dockerfile          multi-stage: backend, frontend-development, frontend-production
 docker-compose.yml  db + backend + frontend
-.cursor/            project rules and prompt history (Cursor convention)
 ```
 
 ## Run with Docker (recommended)
@@ -104,9 +103,6 @@ they stay unit-testable; inject the session and settings instead.
 - **Commits:** short imperative subject; this repo does **not** add a
   `Co-Authored-By` trailer. After a change that alters behavior, add an entry to
   [CHANGELOG.md](CHANGELOG.md).
-- **Cursor workflow:** the project keeps a running log in
-  `.cursor/prompt-history.md` and rules in `.cursor/rules/*.mdc` — update them
-  when the architecture changes.
 
 ## Release / deploy notes
 
