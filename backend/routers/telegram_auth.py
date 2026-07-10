@@ -12,7 +12,7 @@ from config import Settings, get_settings
 from database import get_db
 from models import User
 from ratelimit import limiter
-from redirects import resolve_post_login_redirect
+from redirects import hosts_from_urls, resolve_post_login_redirect
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -120,9 +120,14 @@ async def telegram_login(
         extra_claims={"telegram_id": telegram_id},
     )
 
+    allowed_hosts = hosts_from_urls(
+        settings.frontend_default_url,
+        *settings.cors_allow_origins,
+    )
     redirect_url = resolve_post_login_redirect(
         raw_all.get("next"),
         settings.frontend_default_url,
+        allowed_hosts=allowed_hosts,
     )
     popup = (raw_all.get("popup") or "").strip().lower() in (
         "1",
