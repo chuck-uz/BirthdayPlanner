@@ -27,8 +27,7 @@ Organizing a group gift usually means someone starts a chat, tries to remember w
 - **Subscribe to friends' birthdays** — a feed of upcoming birthdays sorted by days remaining; subscribe to anyone in one click.
 - **Secret gift chat** — a configurable number of days before the date, the bot offers the organizer to create a group, add the bot, and broadcast the invite to every subscriber. The birthday person is never in that chat.
 - **Private groups** — your own closed groups with `admin`/`member` roles and a revocable invite link (regenerate it any time and the old one stops working instantly). The bot notifies group admins ahead of a member's birthday; if the birthday person has no other admins around, every other member is warned a week out instead.
-- **Telegram bot** — confirms subscriptions, walks the organizer through the steps ("create a group → send the link → broadcast"), tracks who activated the bot, and notifies about new events. Buttons and links go through a secure webhook with a secret token.
-- **Admin panel** — user list with block/delete, an upcoming-birthdays dashboard with delivery status, manual group-link broadcast, and test-user generation.
+- **Telegram bot** — confirms subscriptions, walks the organizer through the steps ("create a group → add the bot → done"), tracks who activated the bot, and notifies about new events. Buttons and links go through a secure webhook with a secret token.
 - **Daily scheduler** — APScheduler at 09:00 in the configured timezone checks whose birthday is N days away and starts the notification flow. Re-processing a date is impossible (a `BirthdayEvent` with a unique key).
 - **Protects the birthday person's privacy** — blocked and "test" profiles are hidden from regular users; avatars and wishlist photos are served only with a valid JWT, never as public static.
 - **Self-host ready** — a single `docker compose up`: PostgreSQL, the FastAPI backend, and the React frontend behind Nginx. The DB schema is managed by Alembic migrations.
@@ -59,8 +58,8 @@ Everything is configured via environment variables (a `.env` file in the repo ro
 | `BOT_TOKEN` | yes | Bot token from [@BotFather](https://t.me/BotFather). Used for both the Login Widget and the Bot API. |
 | `JWT_SECRET_KEY` | yes | Secret for signing session JWTs. A long random string. |
 | `DB_USER` / `DB_PASSWORD` / `DB_NAME` | yes | PostgreSQL credentials (Compose builds `DATABASE_URL` from them). |
-| `TELEGRAM_ADMIN_ID` | no | Admin's Telegram ID: access to the `/admin` panel and the DM group flow. |
 | `BIRTHDAY_NOTIFY_DAYS_BEFORE` | no | How many days before the birthday to start the broadcast (default 14). |
+| `GROUP_BIRTHDAY_NOTIFY_DAYS_BEFORE` | no | How many days before to notify private group admins (default 7). |
 | `SCHEDULER_TIMEZONE` | no | Timezone of the daily 09:00 check (default `Europe/Moscow`). |
 | `TELEGRAM_WEBHOOK_BASE_URL` | no | Public HTTPS address — the webhook `…/api/telegram/webhook` is set on startup. |
 | `TELEGRAM_WEBHOOK_SECRET` | no | Secret in the webhook header (recommended in production). |
