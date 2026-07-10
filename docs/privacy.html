@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Политика конфиденциальности — BirthdayPlanner</title>
+<meta name="description" content="Конфиденциальность BirthdayPlanner: self-hosted, данные хранятся в вашей базе, наружу — только Telegram. Никакой аналитики и рекламы.">
+<link rel="icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--primary:#7C3AED;--accent:#EC4899;--ink:#2A1A4A;--muted:#6B6280;--fg:#4C1D95;--bg:#FAF7FF;--card:#fff;--border:#ECE3FB}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,sans-serif;color:var(--ink);background:var(--bg);line-height:1.7;-webkit-font-smoothing:antialiased}
+  a{color:var(--primary);cursor:pointer}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px}
+  nav{border-bottom:1px solid var(--border);background:var(--card)}
+  .nav-in{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--ink);text-decoration:none}
+  .brand img{width:32px;height:32px;border-radius:9px}
+  .nav-in a.back{font-weight:500;font-size:15px;color:var(--muted);text-decoration:none}
+  .nav-in a.back:hover{color:var(--primary)}
+  main{padding:56px 0 72px}
+  h1{font-size:34px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
+  .upd{color:var(--muted);font-size:14px;margin-bottom:36px}
+  h2{font-size:20px;font-weight:700;color:var(--fg);margin:34px 0 10px}
+  p,li{color:#3B2F52;font-size:16px}
+  ul{margin:10px 0 10px 22px}
+  li{margin-bottom:8px}
+  code{background:rgba(124,58,237,.08);padding:2px 6px;border-radius:6px;font-size:14px}
+  .box{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin:24px 0;border-left:4px solid var(--accent)}
+  .box strong{color:var(--accent)}
+  footer{border-top:1px solid var(--border);background:var(--card);padding:28px 0}
+  .foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:14px;color:var(--muted)}
+  .foot a{text-decoration:none}
+</style>
+</head>
+<body>
+<nav><div class="wrap nav-in">
+  <a class="brand" href="index.html"><img src="icon.svg" alt="BirthdayPlanner"> BirthdayPlanner</a>
+  <a class="back" href="index.html">← На главную</a>
+</div></nav>
+
+<main class="wrap">
+  <h1>Политика конфиденциальности</h1>
+  <div class="upd">BirthdayPlanner · обновлено 10 июля 2026</div>
+
+  <div class="box">
+    <strong>Коротко.</strong> BirthdayPlanner — приложение с открытым кодом для самостоятельного
+    размещения. Данные хранятся в <strong>вашей</strong> базе PostgreSQL на вашем сервере. У проекта
+    нет централизованного сервиса, аналитики и рекламы. Оператором данных выступает тот, кто разворачивает
+    приложение.
+  </div>
+
+  <h2>Какие данные обрабатываются</h2>
+  <p>Для работы сервиса сохраняются: идентификатор и имя из Telegram, дата рождения, аватар, список
+  желаемых подарков (вишлист) и подписки на дни рождения других участников. Всё это хранится в вашей
+  базе данных и файловом хранилище на вашем сервере.</p>
+
+  <h2>Выход в интернет</h2>
+  <p>Приложение обращается наружу только к <strong>Telegram</strong>:</p>
+  <ul>
+    <li><strong>Вход.</strong> Авторизация через официальный Telegram Login Widget; подпись проверяется
+      по HMAC на сервере.</li>
+    <li><strong>Бот и уведомления.</strong> Отправка подтверждений, напоминаний и приглашений в
+      секретный чат через Telegram Bot API.</li>
+  </ul>
+  <p>Никаким сторонним сервисам данные не передаются.</p>
+
+  <h2>Секретность подготовки подарка</h2>
+  <p>Смысл сервиса — держать подготовку подарка в тайне от именинника. Он не видит ни секретного чата,
+  ни списка подписчиков. Приглашение в чат для обсуждения подарка получают только подписчики, а сам
+  виновник торжества — никогда.</p>
+
+  <h2>Доступ к файлам</h2>
+  <p>Аватары и фотографии вишлиста не выкладываются в публичную статику: они отдаются только
+  авторизованным пользователям по JWT. Профили заблокированных пользователей скрыты от остальных.</p>
+
+  <h2>Хранение и удаление</h2>
+  <p>Данные хранятся, пока существует аккаунт. Пользователь может изменить профиль и вишлист в любой
+  момент; администратор может удалить аккаунт — при этом удаляются и связанные файлы (аватар, фото
+  вишлиста).</p>
+
+  <h2>Дети</h2>
+  <p>Продукт не предназначен для детей младше 13 лет и не собирает их данные.</p>
+
+  <h2>Изменения</h2>
+  <p>Актуальная версия документа доступна на этой странице; существенные изменения отражаются в дате
+  обновления выше.</p>
+
+  <h2>Контакты</h2>
+  <p>Вопросы по проекту и приватности — через
+  <a href="https://github.com/chuck-uz/BirthdayPlanner/issues" target="_blank" rel="noopener">issues репозитория на GitHub</a>.</p>
+</main>
+
+<footer><div class="wrap foot">
+  <span>© 2026 BirthdayPlanner · Открытый код, лицензия MIT</span>
+  <span><a href="index.html">Главная</a> · <a href="https://github.com/chuck-uz/BirthdayPlanner" target="_blank" rel="noopener">GitHub</a></span>
+</div></footer>
+</body>
+</html>
