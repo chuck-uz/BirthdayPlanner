@@ -5,7 +5,6 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -20,15 +19,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from birthday_notify_logic import run_subscribe_followup_task
-from birthday_utils import days_until_next_birthday
 from database import get_db
 from deps import get_current_user
-from models import Subscription, User, Wishlist
+from models import User, Wishlist
 from pydantic import ValidationError
-from schemas.subscription import SubscriptionStateOut, TelegramDeliveryOut
+from schemas.group_subscription import GroupSubscriptionStateOut
 from schemas.user import (
-    UpcomingBirthdayOut,
+    TelegramDeliveryOut,
     UserMeOut,
     UserProfileUpdate,
     UserPublicProfileOut,
@@ -36,6 +33,12 @@ from schemas.user import (
 )
 from schemas.wishlist import WishlistItemOut, build_wishlist_item_out, parse_optional_link_url
 from ratelimit import limiter
+from services.private_groups import (
+    PrivateGroupError,
+    subscribe_to_member,
+    subscription_state,
+    unsubscribe_from_member,
+)
 from storage.image_store import ImageStore, avatar_store, wishlist_store
 from telegram_service import get_bot_username, telegram_user_can_receive_bot_messages
 
@@ -189,128 +192,43 @@ async def delete_my_wishlist(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/birthdays/upcoming", response_model=list[UpcomingBirthdayOut])
-async def upcoming_birthdays(
-    session: Annotated[AsyncSession, Depends(get_db)],
-    user: User = Depends(get_current_user),
-) -> list[UpcomingBirthdayOut]:
-    """Все пользователи с указанной датой рождения, по возрастанию дней до следующего ДР."""
-    result = await session.execute(
-        select(User).where(User.birth_date.is_not(None), User.is_blocked.is_(False)),
-    )
-    rows = result.scalars().all()
-    target_ids = [u.id for u in rows]
-    subscribed_ids: set[int] = set()
-    if target_ids:
-        sub_q = await session.execute(
-            select(Subscription.target_user_id).where(
-                Subscription.subscriber_id == user.id,
-                Subscription.target_user_id.in_(target_ids),
-            ),
-        )
-        subscribed_ids = set(sub_q.scalars().all())
-
-    items: list[UpcomingBirthdayOut] = []
-    for u in rows:
-        if u.birth_date is None:
-            continue
-        d = days_until_next_birthday(u.birth_date)
-        has_av = bool(u.avatar_path and u.avatar_path.strip())
-        items.append(
-            UpcomingBirthdayOut(
-                user_id=u.id,
-                full_name=u.full_name,
-                birth_date=u.birth_date,
-                days_until=d,
-                subscribed=u.id in subscribed_ids,
-                has_avatar=has_av,
-            )
-        )
-    items.sort(key=lambda x: (x.days_until, x.user_id))
-    return items
-
-
-async def _subscription_state(user: User, *, subscribed: bool) -> SubscriptionStateOut:
-    """Быстрый ответ: доставку берём из кэша is_bot_active (без живого getChat на каждый запрос)."""
-    return SubscriptionStateOut(
-        subscribed=subscribed,
-        can_receive_bot_messages=user.is_bot_active,
-        bot_username=await get_bot_username(),  # кэшируется после первого вызова
-    )
-
-
-@router.get("/{target_user_id}/subscription", response_model=SubscriptionStateOut)
-async def get_subscription_status(
+@router.get("/{target_user_id}/group-subscription", response_model=GroupSubscriptionStateOut)
+async def get_group_subscription_status(
     target_user_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
     user: User = Depends(get_current_user),
-) -> SubscriptionStateOut:
-    if target_user_id == user.id:
-        return await _subscription_state(user, subscribed=False)
-    target = await session.get(User, target_user_id)
-    if target is None or target.birth_date is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    if target.is_blocked:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    row = await session.execute(
-        select(Subscription).where(
-            Subscription.subscriber_id == user.id,
-            Subscription.target_user_id == target_user_id,
-        ),
+) -> GroupSubscriptionStateOut:
+    subscribed, can_subscribe = await subscription_state(
+        session, subscriber_id=user.id, target_user_id=target_user_id
     )
-    return await _subscription_state(user, subscribed=row.scalar_one_or_none() is not None)
+    return GroupSubscriptionStateOut(subscribed=subscribed, can_subscribe=can_subscribe)
 
 
-@router.post("/{target_user_id}/subscription", response_model=SubscriptionStateOut)
+@router.post("/{target_user_id}/group-subscription", response_model=GroupSubscriptionStateOut)
 @limiter.limit("30/minute")
-async def create_subscription(
+async def create_group_subscription(
     request: Request,
     target_user_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
-    background: BackgroundTasks,
     user: User = Depends(get_current_user),
-) -> SubscriptionStateOut:
+) -> GroupSubscriptionStateOut:
     if target_user_id == user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="cannot_subscribe_to_self",
-        )
-    target = await session.get(User, target_user_id)
-    if target is None or target.birth_date is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    if target.is_blocked:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    row = await session.execute(
-        select(Subscription).where(
-            Subscription.subscriber_id == user.id,
-            Subscription.target_user_id == target_user_id,
-        ),
-    )
-    was_new = row.scalar_one_or_none() is None
-    if was_new:
-        session.add(Subscription(subscriber_id=user.id, target_user_id=target_user_id))
-        await session.flush()
-        # Telegram-рассылку выполняем в фоне: не блокируем HTTP-ответ сетевыми вызовами.
-        background.add_task(run_subscribe_followup_task, user.id, target_user_id)
-    return await _subscription_state(user, subscribed=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_subscribe_to_self")
+    try:
+        await subscribe_to_member(session, subscriber=user, target_user_id=target_user_id)
+    except PrivateGroupError as exc:
+        code = status.HTTP_404_NOT_FOUND if exc.code == "no_shared_group" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=exc.code) from exc
+    return GroupSubscriptionStateOut(subscribed=True, can_subscribe=True)
 
 
-@router.delete("/{target_user_id}/subscription", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_subscription(
+@router.delete("/{target_user_id}/group-subscription", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_group_subscription(
     target_user_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
     user: User = Depends(get_current_user),
 ) -> Response:
-    row = await session.execute(
-        select(Subscription).where(
-            Subscription.subscriber_id == user.id,
-            Subscription.target_user_id == target_user_id,
-        ),
-    )
-    sub = row.scalar_one_or_none()
-    if sub is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_subscribed")
-    await session.delete(sub)
+    await unsubscribe_from_member(session, subscriber=user, target_user_id=target_user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

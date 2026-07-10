@@ -16,17 +16,11 @@ class UserPublicProfileOut(BaseModel):
     wishlists: list[WishlistItemOut]
 
 
-class UpcomingBirthdayOut(BaseModel):
-    """Пользователь с заполненной датой рождения для списка на главной."""
+class TelegramDeliveryOut(BaseModel):
+    """Состояние доставки личных сообщений от бота текущему пользователю."""
 
-    model_config = ConfigDict(from_attributes=True)
-
-    user_id: int
-    full_name: str | None
-    birth_date: dt.date
-    days_until: int
-    subscribed: bool = False
-    has_avatar: bool = False
+    can_receive_bot_messages: bool
+    bot_username: str | None = None
 
 
 class UserMeOut(BaseModel):
