@@ -270,3 +270,22 @@
 - **Запрос (суть):** Единый файл в корне для backend и frontend.
 - **Сделано:** Корневой **`Dockerfile`** (targets **`backend`**, **`frontend-development`**, **`frontend-production`**), **`docker-compose.yml`** — `context: .`, `target` для сервисов; **`/.dockerignore`**. Удалены **`backend/Dockerfile`**, **`frontend/Dockerfile`**, локальные **`.dockerignore`** в подпапках. Прод-образ фронта: `docker build --target frontend-production .`
 - **Итог для следующих сессий:** Сборка только из корня репозитория; отдельные Dockerfiles в `backend/`/`frontend/` больше не используются.
+
+### 2026-07-10 — Аудит и рефакторинг (архитектура, безопасность, производительность)
+
+- **Запрос (суть):** Провести глубокое код-ревью и внести все исправления.
+- **Сделано (backend):**
+  - **Alembic** вместо `create_all` + ручных `ALTER ... IF NOT EXISTS` в lifespan. `backend/alembic.ini`, `backend/migrations/env.py` (async), baseline `migrations/versions/0001_baseline.py` (совпадает с моделями — проверено autogenerate). Контейнер прогоняет `alembic upgrade head` через `backend/entrypoint.sh`. Для существующих БД — один раз `alembic stamp head` (см. `backend/migrations/README.md`).
+  - **Единое хранилище изображений** `backend/storage/image_store.py` (`ImageStore`, `avatar_store`, `wishlist_store`) вместо продублированных `avatar_storage.py`/`wishlist_storage.py` (удалены). Пережатие через Pillow + `Image.MAX_IMAGE_PIXELS` (защита от decompression bomb); аватары теперь тоже переэнкодятся (снимается EXIF).
+  - **B1:** `handle_telegram_admin_birthday_prompt_message` подключён к вебхуку (приём ссылки от админа в ЛС работал вхолостую).
+  - **B4:** ссылка на группу хранится в БД (`AdminBirthdayPrompt.pending_invite_link`), а не в памяти процесса — переживает рестарт/несколько воркеров.
+  - **B5:** удалён мёртвый `try_create_birthday_group` (метод `createChat` ботам недоступен).
+  - **B2:** админ-дашборд `/api/admin/birthdays` — устранён N+1 (GROUP BY + выборка событий одним запросом).
+  - **B3:** рассылка после подписки — в `BackgroundTasks`; `can_receive_bot_messages` берётся из кэша `is_bot_active` (без живого `getChat` на каждый запрос).
+  - **B6:** CORS-origin из `CORS_ALLOW_ORIGINS` (список через запятую).
+  - **B8:** вебхук возвращает 500 при ошибке обработчика (Telegram повторит доставку).
+  - **B9:** rate limiting (slowapi) на логин, подписку, загрузку аватара/вишлиста.
+  - Мелочи: `telegram_send_message` — тонкая обёртка над `..._message_id`; хардкод `14` → `birthday_notify_days_before`; несколько `assert` → явные проверки; `Cache-Control` на выдаче аватаров/фото.
+  - **Тесты:** `backend/tests/` (pytest) для `auth`, `birthday_utils`, `redirects` — 16 тестов, зелёные. `requirements-dev.txt`, `pytest.ini`.
+- **Сделано (frontend):** `AuthContext` — троттлинг авто-refresh на focus/visibilitychange (не дёргает `/api/users/me` дважды).
+- **Итог для следующих сессий:** Схема БД — только через Alembic (`alembic revision --autogenerate`, затем `upgrade head`). Работа с файлами изображений — через `storage.image_store`. Новые чувствительные эндпоинты — под `@limiter.limit(...)`.

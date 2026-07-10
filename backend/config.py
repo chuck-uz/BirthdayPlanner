@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     cookie_secure: bool = Field(default=False, alias="COOKIE_SECURE")
     cookie_samesite: str = Field(default="lax", alias="COOKIE_SAMESITE")
 
+    # Разрешённые Origin для CORS (список через запятую в CORS_ALLOW_ORIGINS).
+    # По умолчанию — локальная разработка; в проде задайте реальный домен.
+    cors_allow_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://127.0.0.1",
+            "http://localhost",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:5174",
+            "http://localhost:5173",
+            "http://localhost:5174",
+        ],
+        alias="CORS_ALLOW_ORIGINS",
+    )
+
     # Редирект после Telegram Login, если параметр next потерян или не прошёл проверку
     frontend_default_url: str = Field(
         default="http://127.0.0.1/",
@@ -59,6 +73,14 @@ class Settings(BaseSettings):
             return None
         if isinstance(v, str) and not v.strip():
             return None
+        return v
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, v: object) -> object:
+        """Позволяет задавать список одной строкой через запятую в .env."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(",") if item.strip()]
         return v
 
 
