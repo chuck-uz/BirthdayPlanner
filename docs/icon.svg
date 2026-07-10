@@ -1,0 +1,28 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BirthdayPlanner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C3AED"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="lid" x1="24" y1="52" x2="104" y2="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE68A"/>
+      <stop offset="1" stop-color="#FCA5A5"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- confetti -->
+  <circle cx="26" cy="30" r="3" fill="#FDE68A"/>
+  <circle cx="104" cy="26" r="3" fill="#A7F3D0"/>
+  <circle cx="100" cy="98" r="3" fill="#FDE68A"/>
+  <rect x="22" y="94" width="6" height="6" rx="1.5" fill="#A7F3D0" transform="rotate(20 25 97)"/>
+  <!-- gift box body -->
+  <rect x="34" y="62" width="60" height="40" rx="6" fill="#fff"/>
+  <!-- lid -->
+  <rect x="28" y="50" width="72" height="18" rx="6" fill="url(#lid)"/>
+  <!-- ribbon vertical -->
+  <rect x="59" y="50" width="10" height="52" fill="#7C3AED" opacity="0.85"/>
+  <!-- bow -->
+  <path d="M64 50c-4-10-16-14-22-8-5 5-1 13 10 14 5 .5 9-2 12-6z" fill="#F472B6"/>
+  <path d="M64 50c4-10 16-14 22-8 5 5 1 13-10 14-5 .5-9-2-12-6z" fill="#F472B6"/>
+  <circle cx="64" cy="50" r="5.5" fill="#DB2777"/>
+</svg>
