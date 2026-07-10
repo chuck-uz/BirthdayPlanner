@@ -45,3 +45,17 @@ class GroupDetailOut(GroupOut):
 class GroupInviteOut(BaseModel):
     group_id: int
     invite_token: str
+
+
+class GroupBirthdayMemberOut(BaseModel):
+    user_id: int
+    full_name: str | None
+    birth_date: dt.date
+    days_until: int
+    has_avatar: bool = False
+
+
+class GroupBirthdaySectionOut(BaseModel):
+    group_id: int
+    group_name: str
+    members: list[GroupBirthdayMemberOut]

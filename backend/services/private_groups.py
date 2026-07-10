@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from birthday_utils import days_until_next_birthday
 from models import Group, GroupInvite, GroupRole, User, UserGroup
 
 
@@ -243,3 +244,41 @@ async def get_group_detail(
     members = sorted(group.memberships, key=lambda m: m.joined_at)
     invite = await get_active_invite(session, group_id=group_id)
     return group, membership, members, invite
+
+
+async def list_group_birthdays(
+    session: AsyncSession,
+    *,
+    user: User,
+    today: dt.date | None = None,
+) -> list[tuple[Group, list[tuple[User, int]]]]:
+    """Группы пользователя с участниками (кроме него самого) с датой рождения,
+    отсортированными по близости; группы без ни одной подходящей даты не включаются,
+    сами секции отсортированы по самому близкому ДР внутри группы."""
+    today = today or dt.date.today()
+
+    result = await session.execute(
+        select(Group)
+        .join(UserGroup, UserGroup.group_id == Group.id)
+        .where(UserGroup.user_id == user.id)
+        .options(selectinload(Group.memberships).selectinload(UserGroup.user)),
+    )
+    groups = list(result.scalars().unique().all())
+
+    sections: list[tuple[Group, list[tuple[User, int]]]] = []
+    for group in groups:
+        members: list[tuple[User, int]] = []
+        for membership in group.memberships:
+            member = membership.user
+            if member is None or member.id == user.id:
+                continue
+            if member.birth_date is None or member.is_blocked:
+                continue
+            members.append((member, days_until_next_birthday(member.birth_date, today)))
+        if not members:
+            continue
+        members.sort(key=lambda pair: (pair[1], pair[0].id))
+        sections.append((group, members))
+
+    sections.sort(key=lambda pair: (pair[1][0][1], pair[0].id))
+    return sections
