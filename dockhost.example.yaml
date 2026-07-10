@@ -2,7 +2,14 @@
 # Copy to dockhost.yaml, fill secrets in environment.variables, then:
 #   dockhost compose apply dockhost.yaml
 #
+# After login redirect: FRONTEND_DEFAULT_URL + CORS_ALLOW_ORIGINS must use the
+# public HTTPS host (not 127.0.0.1). Backend allowlist is built from those URLs.
+# Container env: use $VAR references so DockHost injects project variables
+# (CLI: --variable 'BOT_TOKEN:$BOT_TOKEN' with quotes — otherwise the shell
+# expands empty local vars and the container starts without secrets).
+#
 # Private GitHub repo: set username/password on repository entries in DockHost UI or CLI.
+# Image tags after build are usually dockhost.io/.../build/bp-backend:<git-sha>.
 
 version: 1
 project: sandbox
@@ -16,11 +23,14 @@ environment:
     JWT_SECRET_KEY: change-me
     TELEGRAM_ADMIN_ID: ""
     VITE_TELEGRAM_BOT_NAME: YourBotName
+    # Baked into frontend image at build time (also set ARG defaults in Dockerfile.frontend).
     VITE_TELEGRAM_AUTH_URL: https://birthdayplanner.org/api/auth/telegram
     COOKIE_SECURE: true
+    # Comma-separated origins, NOT a JSON array.
     CORS_ALLOW_ORIGINS: https://birthdayplanner.org
     TELEGRAM_WEBHOOK_BASE_URL: https://birthdayplanner.org
     TELEGRAM_WEBHOOK_SECRET: change-me
+    # Post-Telegram-login fallback + allowlist host (must match the public site).
     FRONTEND_DEFAULT_URL: https://birthdayplanner.org/
     BIRTHDAY_NOTIFY_DAYS_BEFORE: 14
     SCHEDULER_TIMEZONE: Europe/Moscow
@@ -77,10 +87,59 @@ containers:
     - name: bp-db-data
       mountPath: /var/lib/postgresql/data
 
+  # Replace image tag with the SHA from the latest successful repository build.
+  bp-backend:
+    image: dockhost.io/PROJECT_ID/build/bp-backend:GIT_SHA
+    replicas: 1
+    strategy: Recreate
+    resources:
+      cpu: 1
+      cpuFraction: 20
+      memory: 512Mi
+    ports:
+    - 8000/TCP
+    variables:
+      BOT_TOKEN: $BOT_TOKEN
+      JWT_SECRET_KEY: $JWT_SECRET_KEY
+      TELEGRAM_ADMIN_ID: $TELEGRAM_ADMIN_ID
+      COOKIE_SECURE: $COOKIE_SECURE
+      CORS_ALLOW_ORIGINS: $CORS_ALLOW_ORIGINS
+      TELEGRAM_WEBHOOK_BASE_URL: $TELEGRAM_WEBHOOK_BASE_URL
+      TELEGRAM_WEBHOOK_SECRET: $TELEGRAM_WEBHOOK_SECRET
+      FRONTEND_DEFAULT_URL: $FRONTEND_DEFAULT_URL
+      BIRTHDAY_NOTIFY_DAYS_BEFORE: $BIRTHDAY_NOTIFY_DAYS_BEFORE
+      SCHEDULER_TIMEZONE: $SCHEDULER_TIMEZONE
+      DATABASE_URL: $DATABASE_URL
+    volumes:
+    - name: bp-avatars
+      mountPath: /app/uploads/avatars
+    - name: bp-wishlist
+      mountPath: /app/uploads/wishlist
+
+  bp-frontend:
+    image: dockhost.io/PROJECT_ID/build/bp-frontend:GIT_SHA
+    replicas: 1
+    strategy: Recreate
+    resources:
+      cpu: 1
+      cpuFraction: 10
+      memory: 256Mi
+    ports:
+    - 80/TCP
+
 network:
   domains:
     birthdayplanner.org:
       host: birthdayplanner.org
+  services:
+    bp-backend:
+      container: bp-backend
+      ports:
+      - 8000/TCP
+    bp-frontend:
+      container: bp-frontend
+      ports:
+      - 80/TCP
   routes:
     bp-api:
       domain: birthdayplanner.org
