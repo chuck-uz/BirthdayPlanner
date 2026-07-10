@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -61,19 +62,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refreshUser()
   }, [refreshUser])
 
+  const lastAutoRefreshRef = useRef(0)
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void refreshUser()
-      }
-    }
-    const onFocus = () => {
+    // focus и visibilitychange часто срабатывают вместе при переключении вкладок —
+    // троттлим, чтобы не дёргать /api/users/me по два раза подряд.
+    const autoRefresh = () => {
+      const now = Date.now()
+      if (now - lastAutoRefreshRef.current < 3000) return
+      lastAutoRefreshRef.current = now
       void refreshUser()
     }
-    window.addEventListener('focus', onFocus)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') autoRefresh()
+    }
+    window.addEventListener('focus', autoRefresh)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
-      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('focus', autoRefresh)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [refreshUser])

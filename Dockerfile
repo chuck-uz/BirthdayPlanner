@@ -22,10 +22,12 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Прогоняет alembic upgrade head, затем запускает uvicorn.
+CMD ["./entrypoint.sh"]
 
 # --- Frontend: зависимости ---
 FROM node:20-alpine AS frontend-deps

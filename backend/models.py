@@ -83,6 +83,8 @@ class AdminBirthdayPrompt(Base):
     # Кому ушло сообщение с кнопками (админ из env или подписчик, если TELEGRAM_ADMIN_ID не задан)
     prompt_recipient_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     admin_prompt_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Полученная от оператора ссылка на группу (ждёт нажатия «Разослать»); переживает рестарт.
+    pending_invite_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,

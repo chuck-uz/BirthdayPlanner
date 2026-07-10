@@ -13,7 +13,7 @@ from admin_access import user_is_app_admin
 from database import get_db
 from deps import get_current_user
 from models import User, Wishlist
-from wishlist_storage import filesystem_path_for_stored, media_type_for_stored
+from storage.image_store import ImageStore, wishlist_store
 
 router = APIRouter(prefix="/api/wishlists", tags=["wishlists"])
 
@@ -29,10 +29,10 @@ async def get_wishlist_item_photo(
     if item is None or not (item.photo_path and str(item.photo_path).strip()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="wishlist_photo_not_found")
     owner = await session.get(User, item.user_id)
-    if owner is not None and bool(getattr(owner, "is_blocked", False)) and not user_is_app_admin(viewer):
+    if owner is not None and owner.is_blocked and not user_is_app_admin(viewer):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="wishlist_photo_not_found")
     try:
-        path = filesystem_path_for_stored(item.photo_path)
+        path = wishlist_store.filesystem_path(item.photo_path)
     except HTTPException:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -42,6 +42,7 @@ async def get_wishlist_item_photo(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="wishlist_photo_not_found")
     return FileResponse(
         path,
-        media_type=media_type_for_stored(item.photo_path),
+        media_type=ImageStore.media_type(item.photo_path),
         filename=path.name,
+        headers={"Cache-Control": "private, max-age=3600"},
     )

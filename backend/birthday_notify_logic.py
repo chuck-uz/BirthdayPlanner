@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from birthday_utils import days_until_next_birthday, next_birthday_date
 from config import get_settings
+from database import async_session_maker
 from models import BirthdayEvent, Subscription, User
-from telegram_service import telegram_send_message, try_create_birthday_group
+from telegram_service import telegram_send_message
 
 logger = logging.getLogger(__name__)
 
@@ -125,42 +126,15 @@ async def create_birthday_event_and_notify_subscribers(
         )
         return None
 
-    await session.flush()
-    recipients = await _load_subscriber_recipients(session, target)
-    if (
-        trigger_subscriber is not None
-        and trigger_subscriber.id != target.id
-        and not any(r.id == trigger_subscriber.id for r in recipients)
-    ):
-        recipients.append(trigger_subscriber)
-    if not recipients:
-        return None
-
-    name = target_display_name(target)
-    title = f"{name} {celebration.strftime('%d.%m.%Y')} 🎁"
-    chat_id, invite_link = await try_create_birthday_group(title)
-    if chat_id is None or invite_link is None:
-        logger.warning(
-            "createChat/exportInvite failed for target_user_id=%s; "
-            "set TELEGRAM_ADMIN_ID for manual group flow. No subscriber DMs sent.",
-            target.id,
-        )
-        return None
-
-    text = message_gift_group_ready(name, invite_link)
-    for sub_user in recipients:
-        await telegram_send_message(sub_user.telegram_id, text)
-
-    event = BirthdayEvent(
-        target_user_id=target.id,
-        celebration_date=celebration,
-        telegram_chat_id=chat_id,
-        invite_link=invite_link,
-        used_dm_fallback=False,
+    # Ежедневная задача без TELEGRAM_ADMIN_ID и без инициатора-подписчика: автоматически
+    # создать группу через Bot API нельзя (метод недоступен ботам). Группу создаёт человек
+    # (админ через веб-панель /admin или подписчик по кнопкам в ЛС). Здесь — только лог.
+    logger.info(
+        "birthday event for target_user_id=%s requires a human operator "
+        "(set TELEGRAM_ADMIN_ID or use the admin panel); nothing sent automatically.",
+        target.id,
     )
-    session.add(event)
-    await session.flush()
-    return event
+    return None
 
 
 async def send_event_summary_to_telegram_user(
@@ -225,3 +199,29 @@ async def run_subscribe_telegram_followup(
         trigger_subscriber=subscriber,
         relax_admin_days=relax_admin_days,
     )
+
+
+async def run_subscribe_followup_task(subscriber_id: int, target_user_id: int) -> None:
+    """Фоновая обёртка: открывает собственную сессию, не блокирует HTTP-ответ подписки.
+
+    Запускается после коммита подписки (BackgroundTasks), поэтому строки уже в БД.
+    """
+    try:
+        async with async_session_maker() as session:
+            subscriber = await session.get(User, subscriber_id)
+            target = await session.get(User, target_user_id)
+            if subscriber is None or target is None:
+                return
+            await run_subscribe_telegram_followup(
+                session,
+                subscriber,
+                target,
+                was_new_subscription=True,
+            )
+            await session.commit()
+    except Exception:
+        logger.exception(
+            "subscribe_followup_task failed subscriber_id=%s target_user_id=%s",
+            subscriber_id,
+            target_user_id,
+        )

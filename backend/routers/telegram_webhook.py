@@ -6,7 +6,11 @@ import logging
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from birthday_admin_flow import handle_telegram_callback_query, handle_telegram_my_chat_member
+from birthday_admin_flow import (
+    handle_telegram_admin_birthday_prompt_message,
+    handle_telegram_callback_query,
+    handle_telegram_my_chat_member,
+)
 from telegram_bot_start_handler import handle_telegram_message_for_bot_activity
 from config import get_settings
 from database import async_session_maker
@@ -34,9 +38,14 @@ async def telegram_webhook(
             elif "my_chat_member" in body:
                 await handle_telegram_my_chat_member(session, body["my_chat_member"])
             elif "message" in body:
-                await handle_telegram_message_for_bot_activity(session, body["message"])
+                message = body["message"]
+                # /start → отметка активности бота; текстовый URL от админа → приём ссылки на группу.
+                await handle_telegram_message_for_bot_activity(session, message)
+                await handle_telegram_admin_birthday_prompt_message(session, message)
             await session.commit()
     except Exception:
+        # Возвращаем 500, чтобы Telegram повторил доставку (иначе апдейт теряется навсегда).
         logger.exception("telegram_webhook handler failed update_id=%s", body.get("update_id"))
+        raise HTTPException(status_code=500, detail="handler_error")
 
     return {"ok": True}
