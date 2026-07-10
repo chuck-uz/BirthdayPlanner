@@ -4,7 +4,7 @@ const variants = {
   primary:
     'bg-orange-600 text-white shadow-lg shadow-orange-500/30 hover:bg-orange-500 dark:bg-orange-500 dark:hover:bg-orange-400',
   ghost:
-    'bg-white/40 text-zinc-800 ring-1 ring-white/60 hover:bg-white/60 dark:bg-white/5 dark:text-zinc-100 dark:ring-white/10 dark:hover:bg-white/10',
+    'bg-transparent text-zinc-800 hover:bg-zinc-100 dark:text-zinc-100 dark:hover:bg-zinc-800',
   outline:
     'bg-transparent text-zinc-800 ring-1 ring-zinc-300/80 hover:bg-zinc-100/80 dark:text-zinc-100 dark:ring-zinc-700 dark:hover:bg-zinc-900/60',
 } as const
