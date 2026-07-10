@@ -1,0 +1,96 @@
+# DockHost Compose template for BirthdayPlanner (sandbox / birthdayplanner.org).
+# Copy to dockhost.yaml, fill secrets in environment.variables, then:
+#   dockhost compose apply dockhost.yaml
+#
+# Private GitHub repo: set username/password on repository entries in DockHost UI or CLI.
+
+version: 1
+project: sandbox
+
+environment:
+  variables:
+    BP-DB_POSTGRES_USER: postgres
+    BP-DB_POSTGRES_PASSWORD: change-me
+    BP-DB_POSTGRES_DB: birthday_planner
+    BOT_TOKEN: change-me
+    JWT_SECRET_KEY: change-me
+    TELEGRAM_ADMIN_ID: ""
+    VITE_TELEGRAM_BOT_NAME: YourBotName
+    VITE_TELEGRAM_AUTH_URL: https://birthdayplanner.org/api/auth/telegram
+    COOKIE_SECURE: true
+    CORS_ALLOW_ORIGINS: https://birthdayplanner.org
+    TELEGRAM_WEBHOOK_BASE_URL: https://birthdayplanner.org
+    TELEGRAM_WEBHOOK_SECRET: change-me
+    FRONTEND_DEFAULT_URL: https://birthdayplanner.org/
+    BIRTHDAY_NOTIFY_DAYS_BEFORE: 14
+    SCHEDULER_TIMEZONE: Europe/Moscow
+    DATABASE_URL: postgresql+asyncpg://postgres:change-me@bp-db:5432/birthday_planner
+
+volumes:
+  bp-db-data:
+    size: 1Gi
+    type: ssd
+    mode: rwo
+  bp-avatars:
+    size: 1Gi
+    type: ssd
+    mode: rwm
+  bp-wishlist:
+    size: 1Gi
+    type: ssd
+    mode: rwm
+
+repositories:
+  bp-backend:
+    url: https://github.com/chuck-uz/BirthdayPlanner.git
+    branch: main
+    cpu: 1
+    cpuFraction: 20
+    memory: 512Mi
+    dockerFile: Dockerfile.backend
+    dockerContext: .
+  bp-frontend:
+    url: https://github.com/chuck-uz/BirthdayPlanner.git
+    branch: main
+    cpu: 1
+    cpuFraction: 10
+    memory: 256Mi
+    dockerFile: Dockerfile.frontend
+    dockerContext: .
+
+containers:
+  bp-db:
+    image: postgres:17
+    replicas: 1
+    strategy: Recreate
+    resources:
+      cpu: 1
+      cpuFraction: 20
+      memory: 512Mi
+    ports:
+    - 5432/TCP
+    variables:
+      POSTGRES_USER: $BP-DB_POSTGRES_USER
+      POSTGRES_PASSWORD: $BP-DB_POSTGRES_PASSWORD
+      POSTGRES_DB: $BP-DB_POSTGRES_DB
+    volumes:
+    - name: bp-db-data
+      mountPath: /var/lib/postgresql/data
+
+network:
+  domains:
+    birthdayplanner.org:
+      host: birthdayplanner.org
+  routes:
+    bp-api:
+      domain: birthdayplanner.org
+      path: /api
+      type: internal
+      service: bp-backend
+      port: 8000/TCP
+    bp-web:
+      domain: birthdayplanner.org
+      path: /
+      type: internal
+      service: bp-frontend
+      port: 80/TCP
