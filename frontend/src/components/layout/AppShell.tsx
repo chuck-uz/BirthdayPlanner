@@ -1,4 +1,4 @@
-import { Cake, LogOut, Settings, Shield, Users, UserRound } from 'lucide-react'
+import { Cake, Info, LogOut, Settings, Users, UserRound } from 'lucide-react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
@@ -45,12 +45,10 @@ export function AppShell() {
               <Settings className="mr-1 inline size-4" aria-hidden />
               Настройки
             </NavLink>
-            {user?.is_admin ? (
-              <NavLink to="/admin/dashboard" className={navClass}>
-                <Shield className="mr-1 inline size-4" aria-hidden />
-                Админ
-              </NavLink>
-            ) : null}
+            <NavLink to="/about" className={navClass}>
+              <Info className="mr-1 inline size-4" aria-hidden />
+              О проекте
+            </NavLink>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -87,12 +85,10 @@ export function AppShell() {
             <Settings className="mr-1 inline size-4" aria-hidden />
             Настройки
           </NavLink>
-          {user?.is_admin ? (
-            <NavLink to="/admin/dashboard" className={navClass}>
-              <Shield className="mr-1 inline size-4" aria-hidden />
-              Админ
-            </NavLink>
-          ) : null}
+          <NavLink to="/about" className={navClass}>
+            <Info className="mr-1 inline size-4" aria-hidden />
+            О проекте
+          </NavLink>
         </nav>
       </header>
 
