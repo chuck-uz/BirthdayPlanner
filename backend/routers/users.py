@@ -3,21 +3,25 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from avatar_storage import (
-    delete_stored_file_if_exists,
-    filesystem_path_for_stored,
-    media_type_for_stored,
-    read_and_validate_avatar,
-    save_avatar_bytes,
-)
 from admin_access import user_is_app_admin
-from birthday_notify_logic import run_subscribe_telegram_followup
+from birthday_notify_logic import run_subscribe_followup_task
 from birthday_utils import days_until_next_birthday
 from database import get_db
 from deps import get_current_user
@@ -32,13 +36,9 @@ from schemas.user import (
     build_user_me_out,
 )
 from schemas.wishlist import WishlistItemOut, build_wishlist_item_out, parse_optional_link_url
+from ratelimit import limiter
+from storage.image_store import ImageStore, avatar_store, wishlist_store
 from telegram_service import get_bot_username, telegram_user_can_receive_bot_messages
-from wishlist_storage import (
-    delete_wishlist_file_if_exists,
-    process_and_resize_wishlist_image,
-    read_raw_upload,
-    save_wishlist_photo_bytes,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,9 @@ def _normalize_description(raw: str | None) -> str | None:
 
 
 @router.post("/me/wishlists", response_model=WishlistItemOut)
+@limiter.limit("30/minute")
 async def create_my_wishlist(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     user: User = Depends(get_current_user),
     title: str = Form(...),
@@ -115,9 +117,7 @@ async def create_my_wishlist(
     desc = _normalize_description(description)
     photo_rel: str | None = None
     if file is not None and (file.filename or "").strip():
-        raw, _ = await read_raw_upload(file)
-        processed, ext = process_and_resize_wishlist_image(raw)
-        photo_rel = save_wishlist_photo_bytes(processed, ext)
+        photo_rel = await wishlist_store.store_upload(file)
     w = Wishlist(
         user_id=user.id,
         title=t,
@@ -162,13 +162,12 @@ async def patch_my_wishlist(
     w.description = _normalize_description(description)
     w.link_url = link
     if clear_photo:
-        delete_wishlist_file_if_exists(w.photo_path)
+        wishlist_store.delete_if_exists(w.photo_path)
         w.photo_path = None
     if file is not None and (file.filename or "").strip():
-        delete_wishlist_file_if_exists(w.photo_path)
-        raw, _ = await read_raw_upload(file)
-        processed, ext = process_and_resize_wishlist_image(raw)
-        w.photo_path = save_wishlist_photo_bytes(processed, ext)
+        old_photo = w.photo_path
+        w.photo_path = await wishlist_store.store_upload(file)
+        wishlist_store.delete_if_exists(old_photo)
     await session.flush()
     await session.refresh(w)
     return build_wishlist_item_out(w)
@@ -186,7 +185,7 @@ async def delete_my_wishlist(
     w = result.scalar_one_or_none()
     if w is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    delete_wishlist_file_if_exists(w.photo_path)
+    wishlist_store.delete_if_exists(w.photo_path)
     await session.delete(w)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -214,9 +213,10 @@ async def upcoming_birthdays(
 
     items: list[UpcomingBirthdayOut] = []
     for u in rows:
-        assert u.birth_date is not None
+        if u.birth_date is None:
+            continue
         d = days_until_next_birthday(u.birth_date)
-        has_av = bool(getattr(u, "avatar_path", None) and str(u.avatar_path).strip())
+        has_av = bool(u.avatar_path and u.avatar_path.strip())
         items.append(
             UpcomingBirthdayOut(
                 user_id=u.id,
@@ -231,6 +231,15 @@ async def upcoming_birthdays(
     return items
 
 
+async def _subscription_state(user: User, *, subscribed: bool) -> SubscriptionStateOut:
+    """Быстрый ответ: доставку берём из кэша is_bot_active (без живого getChat на каждый запрос)."""
+    return SubscriptionStateOut(
+        subscribed=subscribed,
+        can_receive_bot_messages=user.is_bot_active,
+        bot_username=await get_bot_username(),  # кэшируется после первого вызова
+    )
+
+
 @router.get("/{target_user_id}/subscription", response_model=SubscriptionStateOut)
 async def get_subscription_status(
     target_user_id: int,
@@ -238,17 +247,11 @@ async def get_subscription_status(
     user: User = Depends(get_current_user),
 ) -> SubscriptionStateOut:
     if target_user_id == user.id:
-        can = await telegram_user_can_receive_bot_messages(user.telegram_id)
-        bot = await get_bot_username()
-        return SubscriptionStateOut(
-            subscribed=False,
-            can_receive_bot_messages=can,
-            bot_username=bot,
-        )
+        return await _subscription_state(user, subscribed=False)
     target = await session.get(User, target_user_id)
     if target is None or target.birth_date is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    if bool(getattr(target, "is_blocked", False)) and not user_is_app_admin(user):
+    if target.is_blocked and not user_is_app_admin(user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
     row = await session.execute(
         select(Subscription).where(
@@ -256,20 +259,16 @@ async def get_subscription_status(
             Subscription.target_user_id == target_user_id,
         ),
     )
-    sub = row.scalar_one_or_none()
-    can = await telegram_user_can_receive_bot_messages(user.telegram_id)
-    bot = await get_bot_username()
-    return SubscriptionStateOut(
-        subscribed=sub is not None,
-        can_receive_bot_messages=can,
-        bot_username=bot,
-    )
+    return await _subscription_state(user, subscribed=row.scalar_one_or_none() is not None)
 
 
 @router.post("/{target_user_id}/subscription", response_model=SubscriptionStateOut)
+@limiter.limit("30/minute")
 async def create_subscription(
+    request: Request,
     target_user_id: int,
     session: Annotated[AsyncSession, Depends(get_db)],
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
 ) -> SubscriptionStateOut:
     if target_user_id == user.id:
@@ -280,7 +279,7 @@ async def create_subscription(
     target = await session.get(User, target_user_id)
     if target is None or target.birth_date is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
-    if bool(getattr(target, "is_blocked", False)) and not user_is_app_admin(user):
+    if target.is_blocked and not user_is_app_admin(user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="target_not_found")
     row = await session.execute(
         select(Subscription).where(
@@ -291,28 +290,10 @@ async def create_subscription(
     was_new = row.scalar_one_or_none() is None
     if was_new:
         session.add(Subscription(subscriber_id=user.id, target_user_id=target_user_id))
-    await session.flush()
-    if was_new:
-        try:
-            await run_subscribe_telegram_followup(
-                session,
-                user,
-                target,
-                was_new_subscription=True,
-            )
-        except Exception:
-            logger.exception(
-                "subscribe_telegram_followup failed subscriber_id=%s target_user_id=%s",
-                user.id,
-                target_user_id,
-            )
-    can = await telegram_user_can_receive_bot_messages(user.telegram_id)
-    bot = await get_bot_username()
-    return SubscriptionStateOut(
-        subscribed=True,
-        can_receive_bot_messages=can,
-        bot_username=bot,
-    )
+        await session.flush()
+        # Telegram-рассылку выполняем в фоне: не блокируем HTTP-ответ сетевыми вызовами.
+        background.add_task(run_subscribe_followup_task, user.id, target_user_id)
+    return await _subscription_state(user, subscribed=True)
 
 
 @router.delete("/{target_user_id}/subscription", status_code=status.HTTP_204_NO_CONTENT)
@@ -347,18 +328,19 @@ async def patch_me(
 
 
 @router.patch("/me/avatar", response_model=UserMeOut)
+@limiter.limit("15/minute")
 async def patch_my_avatar(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     user: User = Depends(get_current_user),
     file: UploadFile = File(...),
 ) -> UserMeOut:
-    data, ext = await read_and_validate_avatar(file)
     old_path = user.avatar_path
-    rel = save_avatar_bytes(data, ext)
+    rel = await avatar_store.store_upload(file)
     user.avatar_path = rel
     await session.flush()
     if old_path and old_path != rel:
-        delete_stored_file_if_exists(old_path)
+        avatar_store.delete_if_exists(old_path)
     return build_user_me_out(user)
 
 
@@ -371,18 +353,19 @@ async def get_user_avatar(
     target = await session.get(User, user_id)
     if target is None or not (target.avatar_path and str(target.avatar_path).strip()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
-    if bool(getattr(target, "is_blocked", False)) and not user_is_app_admin(viewer):
+    if target.is_blocked and not user_is_app_admin(viewer):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
     try:
-        path = filesystem_path_for_stored(target.avatar_path)
+        path = avatar_store.filesystem_path(target.avatar_path)
     except HTTPException:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found") from None
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="avatar_not_found")
     return FileResponse(
         path,
-        media_type=media_type_for_stored(target.avatar_path),
+        media_type=ImageStore.media_type(target.avatar_path),
         filename=path.name,
+        headers={"Cache-Control": "private, max-age=3600"},
     )
 
 

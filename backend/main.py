@@ -5,19 +5,20 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 import models  # noqa: F401
-from avatar_storage import ensure_avatars_dir
 from config import get_settings
-from database import Base, engine
+from database import engine
 from jobs.scheduler import shutdown_scheduler, start_scheduler
+from ratelimit import limiter
 from routers.telegram_auth import router as telegram_auth_router
 from routers.telegram_webhook import router as telegram_webhook_router
 from routers.admin import router as admin_router
 from routers.users import router as users_router
 from routers.wishlists import router as wishlists_router
-from wishlist_storage import ensure_wishlist_dir
+from storage.image_store import avatar_store, wishlist_store
 from telegram_service import telegram_set_webhook
 
 logger = logging.getLogger(__name__)
@@ -26,80 +27,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    ensure_avatars_dir()
-    ensure_wishlist_dir()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        if "postgresql" in settings.database_url.lower():
-            try:
-                await conn.execute(
-                    text(
-                        "ALTER TABLE admin_birthday_prompts "
-                        "ADD COLUMN IF NOT EXISTS prompt_recipient_telegram_id BIGINT",
-                    ),
-                )
-            except Exception:
-                logger.warning(
-                    "Could not add prompt_recipient_telegram_id column (migrate manually if needed)",
-                    exc_info=True,
-                )
-            try:
-                await conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path VARCHAR(512)",
-                    ),
-                )
-            except Exception:
-                logger.warning(
-                    "Could not add users.avatar_path column (migrate manually if needed)",
-                    exc_info=True,
-                )
-            try:
-                await conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot_active BOOLEAN NOT NULL DEFAULT false",
-                    ),
-                )
-            except Exception:
-                logger.warning(
-                    "Could not add users.is_bot_active column (migrate manually if needed)",
-                    exc_info=True,
-                )
-            try:
-                await conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT false",
-                    ),
-                )
-            except Exception:
-                logger.warning(
-                    "Could not add users.is_blocked column (migrate manually if needed)",
-                    exc_info=True,
-                )
-            try:
-                await conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT false",
-                    ),
-                )
-            except Exception:
-                logger.warning(
-                    "Could not add users.is_test column (migrate manually if needed)",
-                    exc_info=True,
-                )
-            for stmt in (
-                "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS description TEXT",
-                "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS link_url VARCHAR(2048)",
-                "ALTER TABLE wishlists ADD COLUMN IF NOT EXISTS photo_path VARCHAR(512)",
-            ):
-                try:
-                    await conn.execute(text(stmt))
-                except Exception:
-                    logger.warning(
-                        "Could not migrate wishlists column: %s",
-                        stmt.split()[-1],
-                        exc_info=True,
-                    )
+    avatar_store.ensure_dir()
+    wishlist_store.ensure_dir()
+    # Схема БД управляется Alembic (`alembic upgrade head`, см. backend/migrations).
+    # Приложение больше не создаёт/меняет таблицы при старте.
     start_scheduler()
     base = (settings.telegram_webhook_base_url or "").strip().rstrip("/")
     if base:
@@ -112,18 +43,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="BirthdayPlanner API", version="0.1.0", lifespan=lifespan)
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        # Порт по умолчанию 80 (Docker: 80→5173): Origin без :80
-        "http://127.0.0.1",
-        "http://localhost",
-        # Локальный npm run dev на нестандартном порту
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://localhost:5173",
-        "http://localhost:5174",
-    ],
+    allow_origins=get_settings().cors_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

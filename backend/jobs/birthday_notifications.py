@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 async def _process_one_target(session: AsyncSession, target: User, today: dt.date) -> None:
     settings = get_settings()
     lead = settings.birthday_notify_days_before
-    assert target.birth_date is not None
+    if target.birth_date is None:
+        return
     days_left = days_until_next_birthday(target.birth_date, today)
     if settings.telegram_admin_id is not None:
-        if days_left != 14:
+        if days_left != lead:
             return
         subscribers_count = int(
             await session.scalar(
@@ -36,7 +37,7 @@ async def _process_one_target(session: AsyncSession, target: User, today: dt.dat
         await telegram_send_message(
             int(settings.telegram_admin_id),
             (
-                "🔔 Напоминание: через 14 дней день рождения у "
+                f"🔔 Напоминание: через {lead} дн. день рождения у "
                 f"<b>{name}</b>.\n"
                 f"Подписчиков: {subscribers_count}.\n"
                 "Откройте /admin/dashboard и отправьте ссылку на группу."
@@ -62,7 +63,8 @@ async def run_daily_birthday_reminders() -> None:
         targets = list(result.scalars().unique().all())
 
     for target in targets:
-        assert target.birth_date is not None
+        if target.birth_date is None:
+            continue
         if days_until_next_birthday(target.birth_date, today) != lead:
             continue
         try:
