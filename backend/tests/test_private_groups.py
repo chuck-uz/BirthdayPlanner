@@ -9,10 +9,14 @@ from services.private_groups import (
     create_group,
     get_active_invite,
     get_group_detail,
+    group_subscribers_for,
     join_group_by_invite_token,
     list_group_birthdays,
     promote_member_to_admin,
     regenerate_invite_token,
+    subscribe_to_member,
+    subscription_state,
+    unsubscribe_from_member,
     update_group_settings,
 )
 
@@ -167,15 +171,106 @@ async def test_get_group_detail_requires_membership(db_session: AsyncSession, ma
     assert exc.value.code == "not_a_member"
 
 
-async def test_update_group_settings_toggles_invite_visibility(db_session: AsyncSession, make_user):
+async def test_new_group_defaults_to_seven_day_lead(db_session: AsyncSession, make_user):
+    creator = await make_user()
+    group, _, _ = await create_group(db_session, creator=creator, name="Friends")
+    assert group.notify_lead_days == 7
+
+
+async def test_update_group_settings_toggles_visibility_and_lead_days(
+    db_session: AsyncSession, make_user
+):
     creator = await make_user()
     group, _, _ = await create_group(db_session, creator=creator, name="Friends")
     assert group.invite_visible_to_members is False
 
     updated = await update_group_settings(
-        db_session, group_id=group.id, actor=creator, invite_visible_to_members=True
+        db_session,
+        group_id=group.id,
+        actor=creator,
+        invite_visible_to_members=True,
+        notify_lead_days=14,
     )
     assert updated.invite_visible_to_members is True
+    assert updated.notify_lead_days == 14
+
+
+async def test_update_group_settings_requires_admin(db_session: AsyncSession, make_user):
+    creator = await make_user()
+    member = await make_user()
+    group, _, invite = await create_group(db_session, creator=creator, name="Friends")
+    await join_group_by_invite_token(db_session, user=member, invite_token=invite.token)
+
+    with pytest.raises(PrivateGroupError) as exc:
+        await update_group_settings(
+            db_session,
+            group_id=group.id,
+            actor=member,
+            invite_visible_to_members=True,
+            notify_lead_days=14,
+        )
+    assert exc.value.code == "admin_required"
+
+
+async def test_subscribe_requires_shared_group(db_session: AsyncSession, make_user):
+    a = await make_user()
+    b = await make_user()
+
+    with pytest.raises(PrivateGroupError) as exc:
+        await subscribe_to_member(db_session, subscriber=a, target_user_id=b.id)
+    assert exc.value.code == "no_shared_group"
+
+
+async def test_subscribe_rejects_self(db_session: AsyncSession, make_user):
+    a = await make_user()
+
+    with pytest.raises(PrivateGroupError) as exc:
+        await subscribe_to_member(db_session, subscriber=a, target_user_id=a.id)
+    assert exc.value.code == "cannot_subscribe_to_self"
+
+
+async def test_subscribe_and_unsubscribe_with_shared_group(db_session: AsyncSession, make_user):
+    creator = await make_user()
+    member = await make_user()
+    _, _, invite = await create_group(db_session, creator=creator, name="Friends")
+    await join_group_by_invite_token(db_session, user=member, invite_token=invite.token)
+
+    subscribed, can_subscribe = await subscription_state(
+        db_session, subscriber_id=creator.id, target_user_id=member.id
+    )
+    assert (subscribed, can_subscribe) == (False, True)
+
+    await subscribe_to_member(db_session, subscriber=creator, target_user_id=member.id)
+    subscribed, can_subscribe = await subscription_state(
+        db_session, subscriber_id=creator.id, target_user_id=member.id
+    )
+    assert (subscribed, can_subscribe) == (True, True)
+
+    # Идемпотентно.
+    await subscribe_to_member(db_session, subscriber=creator, target_user_id=member.id)
+    subscribed, _ = await subscription_state(
+        db_session, subscriber_id=creator.id, target_user_id=member.id
+    )
+    assert subscribed is True
+
+    await unsubscribe_from_member(db_session, subscriber=creator, target_user_id=member.id)
+    subscribed, _ = await subscription_state(
+        db_session, subscriber_id=creator.id, target_user_id=member.id
+    )
+    assert subscribed is False
+
+    # Повторный unsubscribe — тихий no-op.
+    await unsubscribe_from_member(db_session, subscriber=creator, target_user_id=member.id)
+
+
+async def test_subscription_state_without_shared_group(db_session: AsyncSession, make_user):
+    a = await make_user()
+    b = await make_user()
+
+    subscribed, can_subscribe = await subscription_state(
+        db_session, subscriber_id=a.id, target_user_id=b.id
+    )
+    assert (subscribed, can_subscribe) == (False, False)
 
 
 async def test_list_group_birthdays_excludes_own_birthday(db_session: AsyncSession, make_user):
@@ -257,3 +352,48 @@ async def test_list_group_birthdays_same_person_repeats_per_group(
     assert len(sections) == 2
     for _, members in sections:
         assert [m[0].id for m in members] == [friend.id]
+
+
+async def test_group_subscribers_for_scoped_to_that_specific_group(
+    db_session: AsyncSession, make_user
+):
+    """Подписка не привязана к группе в хранении, но рассылка — только текущим членам
+    ИМЕННО той группы, для которой считается событие, а не любой общей группы."""
+    creator = await make_user()
+    birthday_person = await make_user(full_name="Star")
+    subscriber_in_both = await make_user(full_name="Both")
+    subscriber_in_family_only = await make_user(full_name="Family Only")
+
+    family, _, family_invite = await create_group(db_session, creator=creator, name="Family")
+    friends, _, friends_invite = await create_group(db_session, creator=creator, name="Friends")
+
+    for group_invite in (family_invite, friends_invite):
+        await join_group_by_invite_token(
+            db_session, user=birthday_person, invite_token=group_invite.token
+        )
+    await join_group_by_invite_token(
+        db_session, user=subscriber_in_both, invite_token=family_invite.token
+    )
+    await join_group_by_invite_token(
+        db_session, user=subscriber_in_both, invite_token=friends_invite.token
+    )
+    await join_group_by_invite_token(
+        db_session, user=subscriber_in_family_only, invite_token=family_invite.token
+    )
+
+    await subscribe_to_member(
+        db_session, subscriber=subscriber_in_both, target_user_id=birthday_person.id
+    )
+    await subscribe_to_member(
+        db_session, subscriber=subscriber_in_family_only, target_user_id=birthday_person.id
+    )
+
+    family_subs = await group_subscribers_for(
+        db_session, group_id=family.id, target_user_id=birthday_person.id
+    )
+    assert {u.id for u in family_subs} == {subscriber_in_both.id, subscriber_in_family_only.id}
+
+    friends_subs = await group_subscribers_for(
+        db_session, group_id=friends.id, target_user_id=birthday_person.id
+    )
+    assert {u.id for u in friends_subs} == {subscriber_in_both.id}
