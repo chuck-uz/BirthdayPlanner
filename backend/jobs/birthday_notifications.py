@@ -5,15 +5,14 @@ from __future__ import annotations
 import datetime as dt
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from birthday_notify_logic import create_birthday_event_and_notify_subscribers
 from birthday_utils import days_until_next_birthday
 from config import get_settings
 from database import async_session_maker
-from models import Subscription, User
-from telegram_service import telegram_send_message
+from models import User
 
 logger = logging.getLogger(__name__)
 
@@ -24,27 +23,6 @@ async def _process_one_target(session: AsyncSession, target: User, today: dt.dat
     if target.birth_date is None:
         return
     days_left = days_until_next_birthday(target.birth_date, today)
-    if settings.telegram_admin_id is not None:
-        if days_left != lead:
-            return
-        subscribers_count = int(
-            await session.scalar(
-                select(func.count()).select_from(Subscription).where(Subscription.target_user_id == target.id),
-            )
-            or 0
-        )
-        name = (target.full_name or "").strip() or f"Участник #{target.id}"
-        await telegram_send_message(
-            int(settings.telegram_admin_id),
-            (
-                f"🔔 Напоминание: через {lead} дн. день рождения у "
-                f"<b>{name}</b>.\n"
-                f"Подписчиков: {subscribers_count}.\n"
-                "Откройте /admin/dashboard и отправьте ссылку на группу."
-            ),
-            parse_mode="HTML",
-        )
-        return
     if days_left != lead:
         return
     await create_birthday_event_and_notify_subscribers(session, target, today=today)

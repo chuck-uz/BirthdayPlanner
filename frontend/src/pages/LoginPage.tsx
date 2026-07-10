@@ -73,6 +73,12 @@ export function LoginPage() {
                   <p className="mt-2 max-w-[280px] text-pretty text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
                     Войдите через Telegram, чтобы вести список дней рождения в одном месте.
                   </p>
+                  <Link
+                    to="/about"
+                    className="mt-3 text-sm font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
+                  >
+                    Что это такое?
+                  </Link>
                 </div>
 
                 <div className="flex flex-col items-center gap-8">

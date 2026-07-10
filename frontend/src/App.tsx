@@ -1,13 +1,9 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
-import { AdminLayout } from '@/components/admin/AdminLayout'
-import { AdminRoute } from '@/components/admin/AdminRoute'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { SetupProfileRoute } from '@/components/auth/SetupProfileRoute'
 import { AppShell } from '@/components/layout/AppShell'
-import { AdminDashboardPage } from '@/pages/AdminDashboardPage'
-import { AdminUserDetailPage } from '@/pages/AdminUserDetailPage'
-import { AdminUsersPage } from '@/pages/AdminUsersPage'
+import { AboutPage } from '@/pages/AboutPage'
 import { GroupDetailPage } from '@/pages/GroupDetailPage'
 import { GroupsPage } from '@/pages/GroupsPage'
 import { HomePage } from '@/pages/HomePage'
@@ -32,6 +28,7 @@ export default function App() {
           }
         />
         <Route element={<AppShell />}>
+          <Route path="/about" element={<AboutPage />} />
           <Route
             path="/"
             element={
@@ -80,21 +77,6 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute requireCompleteProfile>
-                <AdminRoute>
-                  <AdminLayout />
-                </AdminRoute>
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<AdminDashboardPage />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="users/:userId" element={<AdminUserDetailPage />} />
-          </Route>
           <Route
             path="/users/:userId"
             element={

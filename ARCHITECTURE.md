@@ -10,7 +10,7 @@ product/usage docs see [README.md](README.md); for the dev workflow see
 - **Philosophy:** *keep the surprise*. The birthday person must never see the
   gift coordination — subscriptions, the secret chat, or who is in it. Almost
   all coordination happens over a Telegram bot; the web app is the profile,
-  wishlist, and admin surface.
+  wishlist, and groups surface.
 
 ---
 
@@ -22,8 +22,8 @@ product/usage docs see [README.md](README.md); for the dev workflow see
                           ▼
         ┌────────────────────────────────────────────────────────┐
         │                  FastAPI (async, uvicorn)                │
-        │  routers: auth · users · wishlists · admin · webhook     │
-        │  deps: get_current_user (JWT) · get_current_admin        │
+        │  routers: auth · users · wishlists · groups · webhook    │
+        │  deps: get_current_user (JWT)                            │
         └───────┬─────────────────────┬───────────────────┬───────┘
                 │                     │                   │
                 ▼                     ▼                   ▼
@@ -74,29 +74,31 @@ backend/
   models.py                   SQLAlchemy models (5 tables)
   deps.py                     get_current_user (JWT → User, block check)
   auth.py                     Telegram HMAC verify, JWT encode/decode
-  admin_access.py             is_app_admin, get_current_admin dependency
   redirects.py                post-login open-redirect allowlist
   birthday_utils.py           next_birthday_date / days_until (leap-year safe)
   birthday_notify_logic.py    subscribe follow-up, event creation, subscriber broadcast
-  birthday_admin_flow.py      DM group flow: prompts, callback buttons, my_chat_member
-  admin_broadcast_flow.py     admin broadcast callback handling
+  birthday_admin_flow.py      DM group flow: subscriber prompts, callback buttons, my_chat_member
+  group_birthday_notify_logic.py  role-based birthday notifications for private groups
   telegram_service.py         Telegram Bot API calls (httpx)
   telegram_bot_start_handler.py  /start → mark is_bot_active
   ratelimit.py                shared slowapi Limiter
   jobs/
     scheduler.py              APScheduler start/stop (09:00 daily)
-    birthday_notifications.py daily reminder job
+    birthday_notifications.py daily reminder job (subscriptions)
+    private_group_birthday_notifications.py  daily reminder job (groups)
   storage/
     image_store.py            ImageStore (avatars + wishlist photos)
+  services/
+    private_groups.py         group CRUD, invites, roles, group-scoped birthdays
   routers/
     telegram_auth.py          GET /api/auth/telegram, POST /api/auth/logout
     telegram_webhook.py       POST /api/telegram/webhook
     users.py                  profile, wishlist CRUD, subscriptions, avatars
     wishlists.py              JWT-gated wishlist photo delivery
-    admin.py                  users admin, birthdays dashboard, broadcast
+    private_groups.py         group CRUD, invites, roles, group-scoped birthdays
   schemas/                    Pydantic request/response models
-  migrations/                 Alembic (env.py, versions/0001_baseline.py)
-  tests/                      pytest (auth, birthday_utils, redirects)
+  migrations/                 Alembic (env.py, versions/)
+  tests/                      pytest (auth, birthday_utils, redirects, groups)
 ```
 
 The design intent (post-refactor) is a move toward layers: routers validate and
@@ -108,19 +110,24 @@ Telegram client are the main remaining global singletons.
 
 ## 4. Data model
 
-Five tables (`backend/models.py`), all keyed to `users`:
+`backend/models.py`, all keyed to `users`:
 
 | Table | Purpose | Key columns |
 |---|---|---|
 | `users` | Accounts (one per Telegram user, plus synthetic test users) | `telegram_id` (unique), `full_name`, `birth_date`, `avatar_path`, `is_bot_active`, `is_blocked`, `is_test` |
 | `wishlists` | Gift items owned by a user | `user_id` (FK, cascade), `title`, `description`, `link_url`, `photo_path` |
-| `subscriptions` | "subscriber wants notifications about target's birthday" | `subscriber_id`, `target_user_id`, unique together |
-| `admin_birthday_prompts` | State machine for the manual group flow | `target_user_id`, `celebration_date`, `state`, `prompt_recipient_telegram_id`, `admin_prompt_message_id`, `pending_invite_link` |
-| `birthday_events` | Terminal record: this birthday cycle is done | `target_user_id`, `celebration_date` (unique together), `telegram_chat_id`, `invite_link` |
+| `subscriptions` | "subscriber wants notifications about target's birthday" (legacy, still active) | `subscriber_id`, `target_user_id`, unique together |
+| `admin_birthday_prompts` | State machine for the subscriber-organizes-a-group flow | `target_user_id`, `celebration_date`, `state`, `prompt_recipient_telegram_id`, `admin_prompt_message_id` |
+| `birthday_events` | Terminal record: this birthday cycle is done (subscriptions flow) | `target_user_id`, `celebration_date` (unique together), `telegram_chat_id`, `invite_link` |
+| `groups` | Private group | `name`, `invite_visible_to_members` |
+| `group_invites` | Invite links for a group; at most one active (`revoked_at IS NULL`) | `group_id`, `token` (unique), `revoked_at` |
+| `user_groups` | Membership + role (`admin`/`member`) | `user_id`, `group_id`, `role`, unique `(user_id, group_id)` |
+| `group_birthday_notifications` | Idempotency for group birthday pings | `group_id`, `birthday_user_id`, `celebration_date`, `notification_kind`, unique together |
 
 The unique constraint `(target_user_id, celebration_date)` on both
-`admin_birthday_prompts` and `birthday_events` is what makes the whole flow
-idempotent — a birthday is processed at most once per year.
+`admin_birthday_prompts` and `birthday_events` is what makes the subscriptions
+flow idempotent — a birthday is processed at most once per year. Groups use the
+same pattern via `group_birthday_notifications`, scoped per group.
 
 ---
 
@@ -138,42 +145,50 @@ idempotent — a birthday is processed at most once per year.
    cookie (or `Authorization: Bearer`), decodes the JWT, loads the user, and
    **rejects blocked accounts** with 403.
 
-Admin access (`admin_access`) is simply "the JWT user's `telegram_id` equals
-`TELEGRAM_ADMIN_ID`". Post-login redirects are constrained by an allowlist
-(`redirects.py`) to prevent open redirects.
+There is no platform-wide admin role — moderation is scoped to private groups
+(see §6b): the group's creator, or anyone they promote, is that group's admin.
+Post-login redirects are constrained by an allowlist (`redirects.py`) to
+prevent open redirects.
 
 ---
 
-## 6. The birthday notification flow
+## 6. The birthday notification flow (subscriptions, legacy)
 
-The heart of the product. Two entry points converge on the same state machine:
+Two entry points converge on the same state machine:
 
 - **On new subscription** (`POST /api/users/{id}/subscription`) — scheduled as a
   `BackgroundTask` so the HTTP response isn't blocked by Telegram calls.
 - **Daily** (`jobs/birthday_notifications.run_daily_birthday_reminders`) — for
   everyone whose birthday is exactly `BIRTHDAY_NOTIFY_DAYS_BEFORE` away.
 
-When `TELEGRAM_ADMIN_ID` is set, the flow is admin-operated over DM
-(`birthday_admin_flow`). `admin_birthday_prompts.state` walks:
+A bot cannot create a group via the Bot API, so a human always creates it —
+the subscriber who triggered the event. `admin_birthday_prompts.state` walks:
 
 ```
-prompt_sent ──► (admin-mode) await_link ──► link_received ──► completed
-      │                                          ▲
-      └► create_selected ──(bot added to group, my_chat_member)──► completed
+prompt_sent ──► create_selected ──(bot added to group, my_chat_member)──► completed
       └► skipped
 ```
 
-1. Bot DMs the operator: "birthday of X in N days, K subscribers — send a group
-   link" (or, in legacy no-admin mode, buttons *Create / Skip*).
-2. Operator replies with a `t.me/...` URL → `handle_telegram_admin_birthday_prompt_message`
-   stores it in `pending_invite_link` and shows a **"Broadcast to subscribers"** button.
-3. Pressing it messages every subscriber (except the birthday person and blocked
-   users) with the invite and writes a terminal `BirthdayEvent`.
-4. Alternatively, the operator creates a group and adds the bot; the
-   `my_chat_member` webhook exports the invite link and broadcasts it.
+1. Bot DMs the subscriber: "birthday of X in N days, K subscribers — create a
+   group?" with buttons *Create / Skip*.
+2. The subscriber creates a group and adds the bot; the `my_chat_member`
+   webhook exports the invite link, messages every other subscriber (except
+   the birthday person and blocked users), and writes a terminal
+   `BirthdayEvent`.
 
-All prompt/event state lives in PostgreSQL (the pending link too), so the flow
-survives restarts and multiple workers. The birthday person is never a recipient.
+All prompt/event state lives in PostgreSQL, so the flow survives restarts and
+multiple workers. The birthday person is never a recipient.
+
+## 6b. Private groups (current, preferred)
+
+Independent of subscriptions: users create/join `groups` via a revocable
+invite link (`services/private_groups.py`), with `admin`/`member` roles.
+`jobs/private_group_birthday_notifications.py` runs daily and, per group,
+notifies every admin except the birthday person; if the birthday person is
+the group's only admin, it falls back to notifying every other member 7 days
+out instead. No human has to create a Telegram group — the invite link is
+shareable directly. See `group_birthday_notify_logic.py` for the selection
+logic and `group_birthday_notifications` for idempotency.
 
 > A group cannot be created by a bot via the Bot API — a human always creates it
 > and the bot only obtains the invite link. This is why the flow is
@@ -246,9 +261,9 @@ React 19 SPA (Vite + Tailwind, React Router). `AuthContext` fetches
 `/api/users/me` on mount and on window focus/visibility (throttled), keeping the
 session in sync. `axios` is configured `withCredentials` so the HttpOnly cookie
 rides along on same-origin `/api` calls; a response interceptor centralizes
-401/403 (blocked) handling. Pages: home (upcoming birthdays), profile & settings,
-wishlist editing, another user's public profile, and the admin dashboard/user
-views. In production Nginx serves the built SPA and proxies `/api/` to the
+401/403 (blocked) handling. Pages: home (group birthdays), profile & settings,
+wishlist editing, another user's public profile, groups (list/detail/join),
+and About. In production Nginx serves the built SPA and proxies `/api/` to the
 backend.
 
 ---

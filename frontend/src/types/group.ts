@@ -21,6 +21,20 @@ export type GroupDetail = Group & {
   members: GroupMember[]
 }
 
+export type GroupBirthdayMember = {
+  user_id: number
+  full_name: string | null
+  birth_date: string
+  days_until: number
+  has_avatar: boolean
+}
+
+export type GroupBirthdaySection = {
+  group_id: number
+  group_name: string
+  members: GroupBirthdayMember[]
+}
+
 export function buildInviteLink(token: string): string {
   return `${window.location.origin}/groups/join?token=${encodeURIComponent(token)}`
 }

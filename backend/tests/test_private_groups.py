@@ -1,3 +1,5 @@
+import datetime as dt
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,10 +10,18 @@ from services.private_groups import (
     get_active_invite,
     get_group_detail,
     join_group_by_invite_token,
+    list_group_birthdays,
     promote_member_to_admin,
     regenerate_invite_token,
     update_group_settings,
 )
+
+BIRTHDAYS_TODAY = dt.date(2026, 1, 1)
+
+
+def _birth_date_in_days(days: int, today: dt.date = BIRTHDAYS_TODAY) -> dt.date:
+    target = today + dt.timedelta(days=days)
+    return dt.date(1990, target.month, target.day)
 
 
 async def test_create_group_makes_creator_admin(db_session: AsyncSession, make_user):
@@ -166,3 +176,84 @@ async def test_update_group_settings_toggles_invite_visibility(db_session: Async
         db_session, group_id=group.id, actor=creator, invite_visible_to_members=True
     )
     assert updated.invite_visible_to_members is True
+
+
+async def test_list_group_birthdays_excludes_own_birthday(db_session: AsyncSession, make_user):
+    creator = await make_user(birth_date=_birth_date_in_days(5))
+    await create_group(db_session, creator=creator, name="Solo")
+
+    sections = await list_group_birthdays(db_session, user=creator, today=BIRTHDAYS_TODAY)
+    assert sections == []
+
+
+async def test_list_group_birthdays_sorted_within_group(db_session: AsyncSession, make_user):
+    creator = await make_user(birth_date=None)
+    far = await make_user(full_name="Far", birth_date=_birth_date_in_days(20))
+    near = await make_user(full_name="Near", birth_date=_birth_date_in_days(3))
+    group, _, invite = await create_group(db_session, creator=creator, name="Friends")
+    await join_group_by_invite_token(db_session, user=far, invite_token=invite.token)
+    await join_group_by_invite_token(db_session, user=near, invite_token=invite.token)
+
+    sections = await list_group_birthdays(db_session, user=creator, today=BIRTHDAYS_TODAY)
+    assert len(sections) == 1
+    group_out, members = sections[0]
+    assert group_out.id == group.id
+    assert [m[0].id for m in members] == [near.id, far.id]
+    assert [m[1] for m in members] == [3, 20]
+
+
+async def test_list_group_birthdays_groups_sorted_by_soonest_member(
+    db_session: AsyncSession, make_user
+):
+    creator = await make_user(birth_date=None)
+    a = await make_user(full_name="A", birth_date=_birth_date_in_days(10))
+    b = await make_user(full_name="B", birth_date=_birth_date_in_days(2))
+    group_far, _, invite_far = await create_group(db_session, creator=creator, name="Far Group")
+    await join_group_by_invite_token(db_session, user=a, invite_token=invite_far.token)
+    group_near, _, invite_near = await create_group(db_session, creator=creator, name="Near Group")
+    await join_group_by_invite_token(db_session, user=b, invite_token=invite_near.token)
+
+    sections = await list_group_birthdays(db_session, user=creator, today=BIRTHDAYS_TODAY)
+    assert [g.id for g, _ in sections] == [group_near.id, group_far.id]
+
+
+async def test_list_group_birthdays_omits_groups_without_dates(
+    db_session: AsyncSession, make_user
+):
+    creator = await make_user(birth_date=None)
+    no_bday = await make_user(full_name="No Bday", birth_date=None)
+    group, _, invite = await create_group(db_session, creator=creator, name="Empty Dates")
+    await join_group_by_invite_token(db_session, user=no_bday, invite_token=invite.token)
+
+    sections = await list_group_birthdays(db_session, user=creator, today=BIRTHDAYS_TODAY)
+    assert sections == []
+
+
+async def test_list_group_birthdays_excludes_blocked_members(
+    db_session: AsyncSession, make_user
+):
+    creator = await make_user(birth_date=None)
+    blocked = await make_user(
+        full_name="Blocked", birth_date=_birth_date_in_days(5), is_blocked=True
+    )
+    group, _, invite = await create_group(db_session, creator=creator, name="Group")
+    await join_group_by_invite_token(db_session, user=blocked, invite_token=invite.token)
+
+    sections = await list_group_birthdays(db_session, user=creator, today=BIRTHDAYS_TODAY)
+    assert sections == []
+
+
+async def test_list_group_birthdays_same_person_repeats_per_group(
+    db_session: AsyncSession, make_user
+):
+    creator = await make_user(birth_date=None)
+    friend = await make_user(full_name="Friend", birth_date=_birth_date_in_days(4))
+    group1, _, invite1 = await create_group(db_session, creator=creator, name="Group One")
+    await join_group_by_invite_token(db_session, user=friend, invite_token=invite1.token)
+    group2, _, invite2 = await create_group(db_session, creator=creator, name="Group Two")
+    await join_group_by_invite_token(db_session, user=friend, invite_token=invite2.token)
+
+    sections = await list_group_birthdays(db_session, user=creator, today=BIRTHDAYS_TODAY)
+    assert len(sections) == 2
+    for _, members in sections:
+        assert [m[0].id for m in members] == [friend.id]
