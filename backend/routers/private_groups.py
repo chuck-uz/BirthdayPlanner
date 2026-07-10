@@ -10,6 +10,8 @@ from deps import get_current_user
 from models import Group, GroupInvite, GroupRole, User, UserGroup
 from ratelimit import limiter
 from schemas.private_group import (
+    GroupBirthdayMemberOut,
+    GroupBirthdaySectionOut,
     GroupCreateIn,
     GroupDetailOut,
     GroupInviteOut,
@@ -23,6 +25,7 @@ from services.private_groups import (
     create_group,
     get_group_detail,
     join_group_by_invite_token,
+    list_group_birthdays,
     list_user_groups,
     promote_member_to_admin,
     regenerate_invite_token,
@@ -109,6 +112,31 @@ async def list_my_groups(
 ) -> list[GroupOut]:
     rows = await list_user_groups(session, user=user)
     return [_group_out(g, m, c, inv) for g, m, c, inv in rows]
+
+
+@router.get("/birthdays/upcoming", response_model=list[GroupBirthdaySectionOut])
+async def group_upcoming_birthdays(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user: User = Depends(get_current_user),
+) -> list[GroupBirthdaySectionOut]:
+    sections = await list_group_birthdays(session, user=user)
+    return [
+        GroupBirthdaySectionOut(
+            group_id=group.id,
+            group_name=group.name,
+            members=[
+                GroupBirthdayMemberOut(
+                    user_id=member.id,
+                    full_name=member.full_name,
+                    birth_date=member.birth_date,
+                    days_until=days,
+                    has_avatar=bool(member.avatar_path and member.avatar_path.strip()),
+                )
+                for member, days in members
+            ],
+        )
+        for group, members in sections
+    ]
 
 
 @router.get("/{group_id}", response_model=GroupDetailOut)
