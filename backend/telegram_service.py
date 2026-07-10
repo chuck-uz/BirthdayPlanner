@@ -1,4 +1,5 @@
-"""Вызовы Telegram Bot API (httpx). Стандартный Bot API не создаёт новые группы без участия пользователя — см. try_create_birthday_group."""
+"""Вызовы Telegram Bot API (httpx). Ботам недоступно создание групп — их создаёт человек
+(админ через веб-панель или подписчик), а бот лишь получает invite-ссылку."""
 
 from __future__ import annotations
 
@@ -46,29 +47,6 @@ async def get_bot_username() -> str | None:
     return None
 
 
-async def telegram_send_message(
-    chat_id: int,
-    text: str,
-    *,
-    parse_mode: str | None = "HTML",
-    reply_markup: dict[str, Any] | None = None,
-    disable_web_page_preview: bool = True,
-) -> bool:
-    payload: dict[str, Any] = {
-        "chat_id": chat_id,
-        "text": text,
-        "disable_web_page_preview": disable_web_page_preview,
-    }
-    if parse_mode:
-        payload["parse_mode"] = parse_mode
-    if reply_markup is not None:
-        payload["reply_markup"] = reply_markup
-    data = await telegram_api("sendMessage", payload)
-    if not data.get("ok"):
-        logger.warning("sendMessage failed chat_id=%s: %s", chat_id, data.get("description"))
-    return bool(data.get("ok"))
-
-
 async def telegram_send_message_message_id(
     chat_id: int,
     text: str,
@@ -77,6 +55,7 @@ async def telegram_send_message_message_id(
     reply_markup: dict[str, Any] | None = None,
     disable_web_page_preview: bool = True,
 ) -> int | None:
+    """Отправляет сообщение и возвращает его message_id (или None при ошибке)."""
     payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
@@ -96,6 +75,25 @@ async def telegram_send_message_message_id(
         if isinstance(mid, int):
             return mid
     return None
+
+
+async def telegram_send_message(
+    chat_id: int,
+    text: str,
+    *,
+    parse_mode: str | None = "HTML",
+    reply_markup: dict[str, Any] | None = None,
+    disable_web_page_preview: bool = True,
+) -> bool:
+    """Отправляет сообщение; True при успехе. Тонкая обёртка над …_message_id."""
+    mid = await telegram_send_message_message_id(
+        chat_id,
+        text,
+        parse_mode=parse_mode,
+        reply_markup=reply_markup,
+        disable_web_page_preview=disable_web_page_preview,
+    )
+    return mid is not None
 
 
 async def telegram_answer_callback_query(
@@ -188,30 +186,3 @@ async def telegram_set_webhook(webhook_url: str, *, secret_token: str | None) ->
     return bool(data.get("ok"))
 
 
-async def try_create_birthday_group(title: str) -> tuple[int | None, str | None]:
-    """
-    Попытка создать супергруппу через Bot API.
-    У большинства ботов метод отсутствует или возвращает ошибку — тогда (None, None).
-    """
-    trimmed = (title or "День рождения 🎁")[:128]
-    data = await telegram_api(
-        "createChat",
-        {
-            "title": trimmed,
-        },
-    )
-    if not data.get("ok"):
-        return None, None
-    result = data.get("result")
-    if not isinstance(result, dict):
-        return None, None
-    chat_id = result.get("id")
-    if chat_id is None:
-        return None, None
-    inv = await telegram_api("exportChatInviteLink", {"chat_id": chat_id})
-    if not inv.get("ok"):
-        return int(chat_id), None
-    link = inv.get("result")
-    if not isinstance(link, str):
-        return int(chat_id), None
-    return int(chat_id), link

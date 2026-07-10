@@ -46,9 +46,6 @@ CB_CREATE_PREFIX = "bd_c:"
 CB_SKIP_PREFIX = "bd_s:"
 CB_BROADCAST_LINK_PREFIX = "bd_g:"
 
-# prompt_id -> invite_link (в памяти; после перезапуска режим «ожидаю ссылку» сбрасывается)
-_pending_prompt_links: dict[int, str] = {}
-
 
 def _ru_days_word(n: int) -> str:
     n = abs(n)
@@ -362,10 +359,11 @@ async def handle_telegram_callback_query(session: AsyncSession, cq: dict[str, An
             await telegram_answer_callback_query(qid, text="Сначала пришлите ссылку.", show_alert=True)
             return
 
-        link = _pending_prompt_links.pop(prompt.id, None)
+        link = prompt.pending_invite_link
         if not link:
             await telegram_answer_callback_query(qid, text="Ссылка потерялась (перезапустите сценарий).", show_alert=True)
             return
+        prompt.pending_invite_link = None
 
         target = await session.get(User, prompt.target_user_id)
         if target is None or target.birth_date is None:
@@ -658,7 +656,7 @@ async def handle_telegram_admin_birthday_prompt_message(session: AsyncSession, m
     if chosen_target is None or chosen_target.birth_date is None:
         return
 
-    _pending_prompt_links[chosen.id] = link
+    chosen.pending_invite_link = link
     chosen.state = STATE_LINK_RECEIVED
     await session.flush()
 

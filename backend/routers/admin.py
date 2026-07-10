@@ -15,7 +15,7 @@ from admin_access import get_admin_user, get_current_admin
 from birthday_utils import days_until_next_birthday, next_birthday_date
 from database import get_db
 from models import BirthdayEvent, Subscription, User, Wishlist
-from avatar_storage import delete_stored_file_if_exists
+from storage.image_store import avatar_store, wishlist_store
 from schemas.admin import (
     AdminBirthdayDashboardItemOut,
     AdminBroadcastLinkIn,
@@ -28,7 +28,6 @@ from schemas.admin import (
     build_admin_user_detail,
 )
 from telegram_service import telegram_send_message
-from wishlist_storage import delete_wishlist_file_if_exists
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -119,8 +118,8 @@ async def admin_delete_all_test_users(
     deleted = 0
     for u in users:
         for w in u.wishlists:
-            delete_wishlist_file_if_exists(w.photo_path)
-        delete_stored_file_if_exists(getattr(u, "avatar_path", None))
+            wishlist_store.delete_if_exists(w.photo_path)
+        avatar_store.delete_if_exists(u.avatar_path)
         await session.delete(u)
         deleted += 1
     await session.flush()
@@ -144,8 +143,8 @@ async def admin_delete_user(
     if u is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
     for w in u.wishlists:
-        delete_wishlist_file_if_exists(w.photo_path)
-    delete_stored_file_if_exists(getattr(u, "avatar_path", None))
+        wishlist_store.delete_if_exists(w.photo_path)
+    avatar_store.delete_if_exists(u.avatar_path)
     await session.delete(u)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -231,7 +230,7 @@ async def admin_delete_user_wishlist(
     w = result.scalar_one_or_none()
     if w is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    delete_wishlist_file_if_exists(w.photo_path)
+    wishlist_store.delete_if_exists(w.photo_path)
     await session.delete(w)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -242,28 +241,50 @@ async def admin_birthdays_dashboard(
     _: User = Depends(get_admin_user),
 ) -> list[AdminBirthdayDashboardItemOut]:
     today = dt.date.today()
-    result = await session.execute(select(User).where(User.birth_date.is_not(None), User.is_blocked.is_(False)))
-    users = list(result.scalars().all())
+    users = list(
+        (
+            await session.execute(
+                select(User).where(User.birth_date.is_not(None), User.is_blocked.is_(False)),
+            )
+        ).scalars().all()
+    )
+    if not users:
+        return []
+    user_ids = [u.id for u in users]
+
+    # Один GROUP BY вместо запроса на каждого пользователя (устраняем N+1).
+    sub_counts: dict[int, int] = dict(
+        (
+            await session.execute(
+                select(Subscription.target_user_id, func.count())
+                .where(Subscription.target_user_id.in_(user_ids))
+                .group_by(Subscription.target_user_id),
+            )
+        ).all()
+    )
+    # Все события этих пользователей одним запросом; ключ (target, celebration) уникален.
+    events = (
+        await session.execute(
+            select(BirthdayEvent).where(BirthdayEvent.target_user_id.in_(user_ids)),
+        )
+    ).scalars().all()
+    event_by_key: dict[tuple[int, dt.date], BirthdayEvent] = {
+        (e.target_user_id, e.celebration_date): e for e in events
+    }
+
     rows: list[AdminBirthdayDashboardItemOut] = []
     for user in users:
-        assert user.birth_date is not None
+        if user.birth_date is None:
+            continue
         celebration = next_birthday_date(user.birth_date, today)
-        subs = await session.scalar(
-            select(func.count()).select_from(Subscription).where(Subscription.target_user_id == user.id),
-        )
-        event = await session.scalar(
-            select(BirthdayEvent).where(
-                BirthdayEvent.target_user_id == user.id,
-                BirthdayEvent.celebration_date == celebration,
-            ),
-        )
+        event = event_by_key.get((user.id, celebration))
         is_sent = event is not None and bool(event.invite_link)
         rows.append(
             AdminBirthdayDashboardItemOut(
                 id=user.id,
                 full_name=user.full_name,
                 birth_date=user.birth_date,
-                subscribers_count=int(subs or 0),
+                subscribers_count=sub_counts.get(user.id, 0),
                 days_until_birthday=days_until_next_birthday(user.birth_date, today),
                 celebration_date=celebration,
                 status="Отправлено" if is_sent else "Не отправлено",

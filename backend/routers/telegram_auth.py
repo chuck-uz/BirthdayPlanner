@@ -11,6 +11,7 @@ from auth import TelegramAuthError, create_access_token, verify_telegram_login_h
 from config import Settings, get_settings
 from database import get_db
 from models import User
+from ratelimit import limiter
 from redirects import resolve_post_login_redirect
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -71,6 +72,7 @@ def _attach_auth_cookie(response: Response, token: str, settings: Settings) -> N
 
 
 @router.get("/telegram", response_model=None)
+@limiter.limit("30/minute")
 async def telegram_login(
     request: Request,
     session: AsyncSession = Depends(get_db),
