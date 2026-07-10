@@ -1,4 +1,5 @@
-"""Входящие обновления Telegram: callback_query (кнопки админа), my_chat_member (бот добавлен в группу)."""
+"""Входящие обновления Telegram: callback_query (кнопки «создать чат»/«пропустить»),
+my_chat_member (бот добавлен в новую группу)."""
 
 from __future__ import annotations
 
@@ -6,9 +7,9 @@ import logging
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
-from birthday_admin_flow import (
-    handle_telegram_callback_query,
-    handle_telegram_my_chat_member,
+from group_birthday_notify_logic import (
+    handle_group_birthday_callback_query,
+    handle_group_birthday_my_chat_member,
 )
 from telegram_bot_start_handler import handle_telegram_message_for_bot_activity
 from config import get_settings
@@ -33,9 +34,9 @@ async def telegram_webhook(
     try:
         async with async_session_maker() as session:
             if "callback_query" in body:
-                await handle_telegram_callback_query(session, body["callback_query"])
+                await handle_group_birthday_callback_query(session, body["callback_query"])
             elif "my_chat_member" in body:
-                await handle_telegram_my_chat_member(session, body["my_chat_member"])
+                await handle_group_birthday_my_chat_member(session, body["my_chat_member"])
             elif "message" in body:
                 message = body["message"]
                 await handle_telegram_message_for_bot_activity(session, message)

@@ -63,74 +63,6 @@ class Wishlist(Base):
     user: Mapped[User] = relationship(back_populates="wishlists")
 
 
-class Subscription(Base):
-    """Подписка: subscriber хочет уведомления о ДР target_user."""
-
-    __tablename__ = "subscriptions"
-    __table_args__ = (
-        UniqueConstraint("subscriber_id", "target_user_id", name="uq_subscription_subscriber_target"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    subscriber_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(
-        server_default=func.now(),
-        nullable=False,
-    )
-
-    subscriber: Mapped[User] = relationship(foreign_keys=[subscriber_id])
-    target_user: Mapped[User] = relationship(foreign_keys=[target_user_id])
-
-
-class AdminBirthdayPrompt(Base):
-    """Запрос админу: создать группу вручную за N дней до ДР (состояние до BirthdayEvent)."""
-
-    __tablename__ = "admin_birthday_prompts"
-    __table_args__ = (
-        UniqueConstraint("target_user_id", "celebration_date", name="uq_admin_prompt_target_date"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    celebration_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
-    # prompt_sent | create_selected | skipped | completed
-    state: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    # Кому ушло сообщение с кнопками (админ из env или подписчик, если TELEGRAM_ADMIN_ID не задан)
-    prompt_recipient_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    admin_prompt_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    # Полученная от оператора ссылка на группу (ждёт нажатия «Разослать»); переживает рестарт.
-    pending_invite_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    created_at: Mapped[dt.datetime] = mapped_column(
-        server_default=func.now(),
-        nullable=False,
-    )
-
-    target_user: Mapped[User] = relationship(foreign_keys=[target_user_id])
-
-
-class BirthdayEvent(Base):
-    """Один обработанный цикл ДР: группа/рассылка уже созданы, повтор не нужен."""
-
-    __tablename__ = "birthday_events"
-    __table_args__ = (
-        UniqueConstraint("target_user_id", "celebration_date", name="uq_birthday_event_target_date"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    celebration_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
-    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    invite_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    used_dm_fallback: Mapped[bool] = mapped_column(default=False, nullable=False)
-    processed_at: Mapped[dt.datetime] = mapped_column(
-        server_default=func.now(),
-        nullable=False,
-    )
-
-    target_user: Mapped[User] = relationship(foreign_keys=[target_user_id])
-
-
 class Group(Base):
     """Приватная группа с ролями admin/member и инвайт-ссылками."""
 
@@ -141,6 +73,8 @@ class Group(Base):
     invite_visible_to_members: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # За сколько дней до ДР участника уведомлять админов группы; настраивается самой группой.
+    notify_lead_days: Mapped[int] = mapped_column(nullable=False, default=7, server_default="7")
     created_at: Mapped[dt.datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,
@@ -194,26 +128,104 @@ class UserGroup(Base):
     group: Mapped[Group] = relationship(back_populates="memberships")
 
 
-class GroupBirthdayNotification(Base):
-    """Idempotency для Telegram-уведомлений о ДР внутри приватной группы."""
+class GroupMemberSubscription(Base):
+    """Подписка на ДР конкретного человека, с которым есть общая группа.
 
-    __tablename__ = "group_birthday_notifications"
+    Не привязана к конкретной группе в хранении — актуальность (кому в итоге
+    уйдёт рассылка) определяется текущим членством на момент события, а не
+    членством на момент подписки.
+    """
+
+    __tablename__ = "group_member_subscriptions"
     __table_args__ = (
         UniqueConstraint(
-            "group_id",
-            "birthday_user_id",
-            "celebration_date",
-            "notification_kind",
-            name="uq_group_bday_notify",
+            "subscriber_id", "target_user_id", name="uq_group_member_sub_subscriber_target"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    subscriber_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    subscriber: Mapped[User] = relationship(foreign_keys=[subscriber_id])
+    target_user: Mapped[User] = relationship(foreign_keys=[target_user_id])
+
+
+class GroupBirthdayPrompt(Base):
+    """Открытый запрос "создать чат в Telegram" по ДР участника группы.
+
+    Уходит нескольким получателям сразу (все админы группы, либо все
+    участники в fallback-сценарии единственного админа); кто первый нажал
+    «Создать» и добавил бота в группу — тот и закрывает событие.
+    """
+
+    __tablename__ = "group_birthday_prompts"
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id", "target_user_id", "celebration_date", name="uq_group_bday_prompt"
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
-    birthday_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     celebration_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
-    notification_kind: Mapped[str] = mapped_column(String(32), nullable=False)
-    sent_at: Mapped[dt.datetime] = mapped_column(
+    # open | claimed | completed
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="open", server_default="open")
+    claimed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    recipients: Mapped[list[GroupBirthdayPromptRecipient]] = relationship(
+        back_populates="prompt",
+        cascade="all, delete-orphan",
+    )
+
+
+class GroupBirthdayPromptRecipient(Base):
+    """Один получатель открытого промпта — своё сообщение с кнопками в личке."""
+
+    __tablename__ = "group_birthday_prompt_recipients"
+    __table_args__ = (
+        UniqueConstraint("prompt_id", "user_id", name="uq_group_bday_prompt_recipient"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    prompt_id: Mapped[int] = mapped_column(
+        ForeignKey("group_birthday_prompts.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    skipped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
+    prompt: Mapped[GroupBirthdayPrompt] = relationship(back_populates="recipients")
+
+
+class GroupBirthdayEvent(Base):
+    """Терминальная запись: для этого ДР в этой группе чат уже создан."""
+
+    __tablename__ = "group_birthday_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "group_id", "target_user_id", "celebration_date", name="uq_group_bday_event"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    target_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    celebration_date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    invite_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
         server_default=func.now(),
         nullable=False,
     )

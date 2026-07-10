@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from birthday_utils import days_until_next_birthday
-from models import Group, GroupInvite, GroupRole, User, UserGroup
+from models import Group, GroupInvite, GroupMemberSubscription, GroupRole, User, UserGroup
 
 
 class PrivateGroupError(Exception):
@@ -187,8 +187,9 @@ async def update_group_settings(
     group_id: int,
     actor: User,
     invite_visible_to_members: bool,
+    notify_lead_days: int,
 ) -> Group:
-    """Только admin может менять настройки группы (видимость инвайт-ссылки участникам)."""
+    """Только admin может менять настройки группы (видимость инвайт-ссылки, срок уведомления)."""
     await _require_admin_membership(session, group_id=group_id, user_id=actor.id)
 
     group = await session.get(Group, group_id)
@@ -196,6 +197,7 @@ async def update_group_settings(
         raise PrivateGroupError("group_not_found", "Group not found")
 
     group.invite_visible_to_members = invite_visible_to_members
+    group.notify_lead_days = notify_lead_days
     await session.flush()
     return group
 
@@ -282,3 +284,120 @@ async def list_group_birthdays(
 
     sections.sort(key=lambda pair: (pair[1][0][1], pair[0].id))
     return sections
+
+
+async def _shares_a_group(session: AsyncSession, *, user_a_id: int, user_b_id: int) -> bool:
+    a_group_ids = select(UserGroup.group_id).where(UserGroup.user_id == user_a_id)
+    count = await session.scalar(
+        select(func.count()).select_from(UserGroup).where(
+            UserGroup.user_id == user_b_id,
+            UserGroup.group_id.in_(a_group_ids),
+        ),
+    )
+    return int(count or 0) > 0
+
+
+async def subscribed_target_ids(
+    session: AsyncSession,
+    *,
+    subscriber_id: int,
+    target_ids: list[int],
+) -> set[int]:
+    """Из target_ids — на кого из них subscriber_id уже подписан."""
+    if not target_ids:
+        return set()
+    result = await session.execute(
+        select(GroupMemberSubscription.target_user_id).where(
+            GroupMemberSubscription.subscriber_id == subscriber_id,
+            GroupMemberSubscription.target_user_id.in_(target_ids),
+        ),
+    )
+    return set(result.scalars().all())
+
+
+async def subscription_state(
+    session: AsyncSession,
+    *,
+    subscriber_id: int,
+    target_user_id: int,
+) -> tuple[bool, bool]:
+    """(subscribed, can_subscribe) — can_subscribe = сейчас есть хотя бы одна общая группа."""
+    if subscriber_id == target_user_id:
+        return False, False
+    can_subscribe = await _shares_a_group(session, user_a_id=subscriber_id, user_b_id=target_user_id)
+    if not can_subscribe:
+        return False, False
+    row = await session.execute(
+        select(GroupMemberSubscription).where(
+            GroupMemberSubscription.subscriber_id == subscriber_id,
+            GroupMemberSubscription.target_user_id == target_user_id,
+        ),
+    )
+    return row.scalar_one_or_none() is not None, True
+
+
+async def subscribe_to_member(
+    session: AsyncSession,
+    *,
+    subscriber: User,
+    target_user_id: int,
+) -> GroupMemberSubscription:
+    """Подписка на ДР человека, с которым сейчас есть общая группа; идемпотентна."""
+    if subscriber.id == target_user_id:
+        raise PrivateGroupError("cannot_subscribe_to_self", "Cannot subscribe to yourself")
+    shares = await _shares_a_group(session, user_a_id=subscriber.id, user_b_id=target_user_id)
+    if not shares:
+        raise PrivateGroupError("no_shared_group", "You don't share a group with this user")
+
+    existing = await session.execute(
+        select(GroupMemberSubscription).where(
+            GroupMemberSubscription.subscriber_id == subscriber.id,
+            GroupMemberSubscription.target_user_id == target_user_id,
+        ),
+    )
+    row = existing.scalar_one_or_none()
+    if row is not None:
+        return row
+
+    row = GroupMemberSubscription(subscriber_id=subscriber.id, target_user_id=target_user_id)
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def unsubscribe_from_member(
+    session: AsyncSession,
+    *,
+    subscriber: User,
+    target_user_id: int,
+) -> None:
+    """Идемпотентна — тихо ничего не делает, если подписки и не было."""
+    row = await session.execute(
+        select(GroupMemberSubscription).where(
+            GroupMemberSubscription.subscriber_id == subscriber.id,
+            GroupMemberSubscription.target_user_id == target_user_id,
+        ),
+    )
+    sub = row.scalar_one_or_none()
+    if sub is not None:
+        await session.delete(sub)
+        await session.flush()
+
+
+async def group_subscribers_for(
+    session: AsyncSession,
+    *,
+    group_id: int,
+    target_user_id: int,
+) -> list[User]:
+    """Подписчики именинника, которые СЕЙЧАС состоят в этой конкретной группе."""
+    result = await session.execute(
+        select(User)
+        .join(GroupMemberSubscription, GroupMemberSubscription.subscriber_id == User.id)
+        .join(UserGroup, UserGroup.user_id == User.id)
+        .where(
+            GroupMemberSubscription.target_user_id == target_user_id,
+            UserGroup.group_id == group_id,
+        ),
+    )
+    return list(result.scalars().unique().all())
