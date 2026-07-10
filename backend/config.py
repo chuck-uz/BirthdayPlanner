@@ -64,23 +64,11 @@ class Settings(BaseSettings):
     # Часовой пояс ежедневной проверки (09:00)
     scheduler_timezone: str = Field(default="Europe/Moscow", alias="SCHEDULER_TIMEZONE")
 
-    # Telegram user id админа: кнопки бота + веб-панель /admin (PATCH блокировка, список пользователей)
-    telegram_admin_id: int | None = Field(default=None, alias="TELEGRAM_ADMIN_ID")
-
     # Вебхук: секрет в заголовке X-Telegram-Bot-Api-Secret-Token (рекомендуется в проде)
     telegram_webhook_secret: str | None = Field(default=None, alias="TELEGRAM_WEBHOOK_SECRET")
 
     # Публичный HTTPS URL без хвоста, например https://example.com — при старте вызовется setWebhook на …/api/telegram/webhook
     telegram_webhook_base_url: str | None = Field(default=None, alias="TELEGRAM_WEBHOOK_BASE_URL")
-
-    @field_validator("telegram_admin_id", mode="before")
-    @classmethod
-    def _admin_id_empty_as_none(cls, v: object) -> object:
-        if v is None:
-            return None
-        if isinstance(v, str) and not v.strip():
-            return None
-        return v
 
     @field_validator("cors_allow_origins", mode="before")
     @classmethod

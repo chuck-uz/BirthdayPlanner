@@ -8,6 +8,4 @@ export type UserProfile = {
   avatar_url?: string | null
   /** Пользователь нажал /start у бота (или getChat доступен). */
   is_bot_active?: boolean
-  /** Совпадение telegram_id с TELEGRAM_ADMIN_ID на бэкенде. */
-  is_admin?: boolean
 }

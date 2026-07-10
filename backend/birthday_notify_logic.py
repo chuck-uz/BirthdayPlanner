@@ -92,13 +92,12 @@ async def create_birthday_event_and_notify_subscribers(
     *,
     today: dt.date | None = None,
     trigger_subscriber: User | None = None,
-    relax_admin_days: bool = False,
 ) -> BirthdayEvent | None:
     """
     Если событие на ближайшую дату ДР уже есть — вернуть его без рассылки.
-    Иначе при наличии подписчиков: попытка группы через Bot API; при успехе — рассылка ссылки.
-    Ручной поток (кнопки в ЛС): если задан TELEGRAM_ADMIN_ID или вызов с подписчиком (POST подписки).
-    Иначе — только попытка createChat (например, ежедневная задача без env).
+    Группу боты создавать не умеют (Bot API это не поддерживает), поэтому её создаёт
+    человек: подписчик, инициировавший событие, получает в личку просьбу создать группу
+    и прислать ссылку — остальные подписчики узнают о ней уже готовой.
     """
     today = today or dt.date.today()
     assert target.birth_date is not None
@@ -108,12 +107,6 @@ async def create_birthday_event_and_notify_subscribers(
     if existing is not None:
         return existing
 
-    settings = get_settings()
-    if settings.telegram_admin_id is not None:
-        # Админ-рассылка управляется через веб-панель /admin/dashboard.
-        # Telegram-потоки с кнопками отключены, чтобы не дублировать сценарии.
-        return None
-
     if trigger_subscriber is not None:
         from birthday_admin_flow import ensure_admin_prompt_for_birthday
 
@@ -122,16 +115,14 @@ async def create_birthday_event_and_notify_subscribers(
             target,
             today=today,
             trigger_subscriber=trigger_subscriber,
-            relax_days_limit=relax_admin_days,
         )
         return None
 
-    # Ежедневная задача без TELEGRAM_ADMIN_ID и без инициатора-подписчика: автоматически
-    # создать группу через Bot API нельзя (метод недоступен ботам). Группу создаёт человек
-    # (админ через веб-панель /admin или подписчик по кнопкам в ЛС). Здесь — только лог.
+    # Ежедневная задача без инициатора-подписчика: создать группу автоматически нельзя,
+    # а просить некого. Событие останется без группы до следующей подписки.
     logger.info(
-        "birthday event for target_user_id=%s requires a human operator "
-        "(set TELEGRAM_ADMIN_ID or use the admin panel); nothing sent automatically.",
+        "birthday event for target_user_id=%s has no subscriber to ask for a group; "
+        "nothing sent automatically.",
         target.id,
     )
     return None
@@ -157,10 +148,8 @@ async def run_subscribe_telegram_followup(
     *,
     was_new_subscription: bool,
 ) -> None:
-    """
-    После подписки: подтверждение в бот; дальше — окно BIRTHDAY_NOTIFY_DAYS_BEFORE
-    (или любая дата, если подписался пользователь с TELEGRAM_ADMIN_ID): событие/ссылка или запрос админу.
-    """
+    """После подписки: подтверждение в бот; дальше — окно BIRTHDAY_NOTIFY_DAYS_BEFORE: событие/ссылка
+    или просьба подписчику создать группу самому."""
     if not was_new_subscription:
         return
 
@@ -168,8 +157,6 @@ async def run_subscribe_telegram_followup(
 
     settings = get_settings()
     window = settings.birthday_notify_days_before
-    admin_tid = settings.telegram_admin_id
-    is_app_admin = admin_tid is not None and int(subscriber.telegram_id) == int(admin_tid)
 
     assert target.birth_date is not None
     today = dt.date.today()
@@ -183,21 +170,14 @@ async def run_subscribe_telegram_followup(
         await send_event_summary_to_telegram_user(subscriber.telegram_id, target, event)
         return
 
-    # Запрос на группу админу (TELEGRAM_ADMIN_ID) должен уходить при любой новой подписке,
-    # даже если до ДР > BIRTHDAY_NOTIFY_DAYS_BEFORE. Без admin id — только окно N дней (кнопки подписчику).
-    if admin_tid is None:
-        if days > window and not is_app_admin:
-            return
-        relax_admin_days = bool(is_app_admin and days > window)
-    else:
-        relax_admin_days = days > window
+    if days > window:
+        return
 
     await create_birthday_event_and_notify_subscribers(
         session,
         target,
         today=today,
         trigger_subscriber=subscriber,
-        relax_admin_days=relax_admin_days,
     )
 
 
