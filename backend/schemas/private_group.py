@@ -15,6 +15,7 @@ class GroupJoinIn(BaseModel):
 
 class GroupSettingsUpdateIn(BaseModel):
     invite_visible_to_members: bool
+    notify_lead_days: int = Field(..., ge=1, le=90)
 
 
 class GroupOut(BaseModel):
@@ -25,6 +26,7 @@ class GroupOut(BaseModel):
     my_role: str
     member_count: int
     invite_visible_to_members: bool
+    notify_lead_days: int
     invite_token: str | None = None
     created_at: dt.datetime
 
@@ -36,6 +38,7 @@ class GroupMemberOut(BaseModel):
     full_name: str | None
     role: str
     joined_at: dt.datetime
+    subscribed: bool = False
 
 
 class GroupDetailOut(GroupOut):

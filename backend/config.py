@@ -53,14 +53,6 @@ class Settings(BaseSettings):
         alias="FRONTEND_DEFAULT_URL",
     )
 
-    # За сколько дней до ДР запускать рассылку подписчикам (и попытку «группы»)
-    birthday_notify_days_before: int = Field(default=14, alias="BIRTHDAY_NOTIFY_DAYS_BEFORE", ge=1, le=90)
-
-    # За сколько дней до ДР уведомлять админов приватной группы о ДР участника/другого админа
-    group_birthday_notify_days_before: int = Field(
-        default=7, alias="GROUP_BIRTHDAY_NOTIFY_DAYS_BEFORE", ge=1, le=90
-    )
-
     # Часовой пояс ежедневной проверки (09:00)
     scheduler_timezone: str = Field(default="Europe/Moscow", alias="SCHEDULER_TIMEZONE")
 

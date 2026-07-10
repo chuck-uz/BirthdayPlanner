@@ -29,6 +29,7 @@ from services.private_groups import (
     list_user_groups,
     promote_member_to_admin,
     regenerate_invite_token,
+    subscribed_target_ids,
     update_group_settings,
 )
 
@@ -65,6 +66,7 @@ def _group_out(
         my_role=membership.role,
         member_count=member_count,
         invite_visible_to_members=group.invite_visible_to_members,
+        notify_lead_days=group.notify_lead_days,
         invite_token=(invite.token if invite and can_see_invite else None),
         created_at=group.created_at,
     )
@@ -151,12 +153,18 @@ async def get_private_group(
             group_id=group_id,
             user=user,
         )
+        subscribed_ids = await subscribed_target_ids(
+            session,
+            subscriber_id=user.id,
+            target_ids=[m.user_id for m in members if m.user_id != user.id],
+        )
         member_outs = [
             GroupMemberOut(
                 user_id=m.user_id,
                 full_name=m.user.full_name if m.user else None,
                 role=m.role,
                 joined_at=m.joined_at,
+                subscribed=m.user_id in subscribed_ids,
             )
             for m in members
         ]
@@ -223,6 +231,7 @@ async def patch_group_settings(
             group_id=group_id,
             actor=user,
             invite_visible_to_members=body.invite_visible_to_members,
+            notify_lead_days=body.notify_lead_days,
         )
         group, membership, members, invite = await get_group_detail(
             session,

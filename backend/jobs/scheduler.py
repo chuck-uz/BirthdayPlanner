@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from config import get_settings
-from jobs.birthday_notifications import run_daily_birthday_reminders
 from jobs.private_group_birthday_notifications import run_private_group_birthday_notifications
 
 logger = logging.getLogger(__name__)
@@ -28,14 +27,6 @@ def start_scheduler() -> None:
         tz = ZoneInfo("UTC")
 
     _scheduler = AsyncIOScheduler(timezone=tz)
-    _scheduler.add_job(
-        run_daily_birthday_reminders,
-        "cron",
-        hour=9,
-        minute=0,
-        id="birthday_notify_daily",
-        replace_existing=True,
-    )
     _scheduler.add_job(
         run_private_group_birthday_notifications,
         "cron",

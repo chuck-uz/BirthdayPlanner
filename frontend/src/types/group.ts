@@ -5,6 +5,7 @@ export type GroupMember = {
   full_name: string | null
   role: GroupRole
   joined_at: string
+  subscribed: boolean
 }
 
 export type Group = {
@@ -13,6 +14,7 @@ export type Group = {
   my_role: GroupRole
   member_count: number
   invite_visible_to_members: boolean
+  notify_lead_days: number
   invite_token: string | null
   created_at: string
 }
@@ -58,6 +60,8 @@ const GROUP_ERROR_MESSAGES: Record<string, string> = {
   target_not_member: 'Этот пользователь не состоит в группе.',
   invalid_token: 'Ссылка-приглашение не указана.',
   invalid_name: 'Укажите название группы.',
+  no_shared_group: 'Вы не состоите с этим человеком в одной группе.',
+  cannot_subscribe_to_self: 'Нельзя подписаться на самого себя.',
 }
 
 export function groupErrorMessage(code: unknown): string {
