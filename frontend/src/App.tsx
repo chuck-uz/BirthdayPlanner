@@ -8,7 +8,10 @@ import { AppShell } from '@/components/layout/AppShell'
 import { AdminDashboardPage } from '@/pages/AdminDashboardPage'
 import { AdminUserDetailPage } from '@/pages/AdminUserDetailPage'
 import { AdminUsersPage } from '@/pages/AdminUsersPage'
+import { GroupDetailPage } from '@/pages/GroupDetailPage'
+import { GroupsPage } from '@/pages/GroupsPage'
 import { HomePage } from '@/pages/HomePage'
+import { JoinGroupPage } from '@/pages/JoinGroupPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ProfilePage } from '@/pages/ProfilePage'
 import { ProfileSettingsPage } from '@/pages/ProfileSettingsPage'
@@ -50,6 +53,30 @@ export default function App() {
             element={
               <ProtectedRoute requireCompleteProfile>
                 <ProfileSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/groups"
+            element={
+              <ProtectedRoute requireCompleteProfile>
+                <GroupsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/groups/join"
+            element={
+              <ProtectedRoute requireCompleteProfile>
+                <JoinGroupPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/groups/:groupId"
+            element={
+              <ProtectedRoute requireCompleteProfile>
+                <GroupDetailPage />
               </ProtectedRoute>
             }
           />
