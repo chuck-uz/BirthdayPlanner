@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react'
-import { CalendarPlus, Gift, ListChecks, Sparkles, Users } from 'lucide-react'
+import {
+  CalendarDays,
+  CalendarPlus,
+  Gift,
+  Link2,
+  ListChecks,
+  Sparkles,
+  UserPlus,
+  Users,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { api } from '@/lib/api'
 import {
   buildGoogleCalendarBirthdayUrl,
@@ -10,7 +20,7 @@ import {
   formatAnnualBirthdayRu,
 } from '@/lib/birthdayFormat'
 import { membersCountLabel } from '@/types/group'
-import type { GroupBirthdayMember, GroupBirthdaySection } from '@/types/group'
+import type { Group, GroupBirthdayMember, GroupBirthdaySection } from '@/types/group'
 
 function displayName(m: GroupBirthdayMember): string {
   return m.full_name?.trim() || `Участник #${m.user_id}`
@@ -75,6 +85,95 @@ function BirthdayCard({ member }: { member: GroupBirthdayMember }) {
   )
 }
 
+const ONBOARDING_STEPS = [
+  {
+    icon: Users,
+    text: 'Создайте группу или вступите по приглашению',
+  },
+  {
+    icon: Gift,
+    text: 'Участники укажут дату рождения и вишлист',
+  },
+  {
+    icon: CalendarDays,
+    text: 'Мы напомним вовремя и поможем собрать чат в Telegram',
+  },
+] as const
+
+function NoGroupsState() {
+  return (
+    <div className="flex flex-col items-center rounded-2xl border border-dashed border-zinc-300/90 bg-white/40 px-6 py-12 text-center dark:border-zinc-700 dark:bg-zinc-950/30">
+      <Users className="mb-3 size-10 text-zinc-400 dark:text-zinc-500" aria-hidden />
+      <p className="text-base font-medium text-zinc-800 dark:text-zinc-200">Пока нет групп</p>
+      <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500 dark:text-zinc-400">
+        BirthdayPlanner работает через приватные группы — создайте свою или вступите по
+        ссылке-приглашению, и здесь появятся дни рождения участников.
+      </p>
+
+      <div className="mt-8 grid w-full max-w-2xl gap-3 sm:grid-cols-3">
+        {ONBOARDING_STEPS.map(({ icon: Icon, text }, i) => (
+          <div
+            key={i}
+            className="flex flex-col items-center gap-2 rounded-xl border border-zinc-200/80 bg-white px-4 py-5 text-center dark:border-zinc-800 dark:bg-zinc-900/60"
+          >
+            <span className="flex size-9 items-center justify-center rounded-full bg-orange-500/15 text-orange-700 dark:text-orange-400">
+              <Icon className="size-5" aria-hidden />
+            </span>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{text}</p>
+          </div>
+        ))}
+      </div>
+
+      <Link to="/groups" className="mt-8">
+        <Button type="button">Перейти к группам</Button>
+      </Link>
+      <Link
+        to="/about"
+        className="mt-3 text-sm font-medium text-zinc-500 underline-offset-2 hover:text-orange-600 hover:underline dark:text-zinc-400 dark:hover:text-orange-400"
+      >
+        Как это устроено
+      </Link>
+    </div>
+  )
+}
+
+function NoBirthdayDataState({ groups }: { groups: Group[] }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-zinc-300/90 bg-white/40 px-6 py-8 text-center dark:border-zinc-700 dark:bg-zinc-950/30">
+        <CalendarDays className="size-8 text-zinc-400 dark:text-zinc-500" aria-hidden />
+        <p className="text-base font-medium text-zinc-800 dark:text-zinc-200">
+          В ваших группах пока не видно дней рождения
+        </p>
+        <p className="mx-auto max-w-md text-sm text-zinc-500 dark:text-zinc-400">
+          Участники ещё не указали дату рождения в профиле — попросите их зайти в профиль и
+          заполнить её, тогда карточки появятся здесь.
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {groups.map((g) => (
+          <Link key={g.id} to={`/groups/${g.id}`}>
+            <Card className="h-full transition hover:bg-white/70 dark:hover:bg-black/50">
+              <CardHeader>
+                <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                  <UserPlus className="size-4 shrink-0" aria-hidden />
+                  <CardTitle className="text-base">{g.name}</CardTitle>
+                </div>
+                <CardDescription>{membersCountLabel(g.member_count)}</CardDescription>
+              </CardHeader>
+              <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                <Link2 className="size-3.5 shrink-0" aria-hidden />
+                Перейти в группу
+              </p>
+            </Card>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function GroupSection({ section }: { section: GroupBirthdaySection }) {
   return (
     <section className="flex flex-col gap-3">
@@ -100,20 +199,26 @@ function GroupSection({ section }: { section: GroupBirthdaySection }) {
 
 export function HomePage() {
   const [sections, setSections] = useState<GroupBirthdaySection[] | null>(null)
+  const [groups, setGroups] = useState<Group[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const { data } = await api.get<GroupBirthdaySection[]>('/api/groups/birthdays/upcoming')
+        const [birthdaysRes, groupsRes] = await Promise.all([
+          api.get<GroupBirthdaySection[]>('/api/groups/birthdays/upcoming'),
+          api.get<Group[]>('/api/groups'),
+        ])
         if (!cancelled) {
-          setSections(data)
+          setSections(birthdaysRes.data)
+          setGroups(groupsRes.data)
           setError(null)
         }
       } catch {
         if (!cancelled) {
           setSections(null)
+          setGroups(null)
           setError('Не удалось загрузить список')
         }
       }
@@ -153,17 +258,11 @@ export function HomePage() {
       ) : null}
 
       {sections !== null && sections.length === 0 && !error ? (
-        <div className="flex flex-col items-center rounded-2xl border border-dashed border-zinc-300/90 bg-white/40 px-6 py-16 text-center dark:border-zinc-700 dark:bg-zinc-950/30">
-          <Users className="mx-auto mb-3 size-10 text-zinc-400 dark:text-zinc-500" aria-hidden />
-          <p className="text-base font-medium text-zinc-800 dark:text-zinc-200">Пока нет групп</p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500 dark:text-zinc-400">
-            Создайте свою группу или вступите по приглашению — тогда здесь появятся дни
-            рождения участников.
-          </p>
-          <Link to="/groups" className="mt-5">
-            <Button type="button">Перейти к группам</Button>
-          </Link>
-        </div>
+        groups && groups.length > 0 ? (
+          <NoBirthdayDataState groups={groups} />
+        ) : (
+          <NoGroupsState />
+        )
       ) : null}
 
       {sections !== null && sections.length > 0 ? (
