@@ -6,7 +6,7 @@ import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { useAuth } from '@/contexts/AuthContext'
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
-  `rounded-lg px-3 py-2 text-sm font-medium transition ${
+  `inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
     isActive
       ? 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400'
       : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100'
@@ -30,7 +30,7 @@ export function AppShell() {
             <span>BirthdayPlanner</span>
           </Link>
 
-          <nav className="hidden items-center gap-1 sm:flex">
+          <nav className="hidden items-center gap-2 sm:flex">
             <NavLink to="/" end className={navClass}>
               Главная
             </NavLink>
@@ -38,15 +38,15 @@ export function AppShell() {
               Профиль
             </NavLink>
             <NavLink to="/groups" className={navClass}>
-              <Users className="mr-1 inline size-4" aria-hidden />
+              <Users className="size-4 shrink-0" aria-hidden />
               Группы
             </NavLink>
             <NavLink to="/profile/settings" className={navClass} title="Настройки">
-              <Settings className="mr-1 inline size-4" aria-hidden />
+              <Settings className="size-4 shrink-0" aria-hidden />
               Настройки
             </NavLink>
             <NavLink to="/about" className={navClass}>
-              <Info className="mr-1 inline size-4" aria-hidden />
+              <Info className="size-4 shrink-0" aria-hidden />
               О проекте
             </NavLink>
           </nav>
@@ -74,19 +74,19 @@ export function AppShell() {
             Главная
           </NavLink>
           <NavLink to="/profile" className={navClass}>
-            <UserRound className="mr-1 inline size-4" aria-hidden />
+            <UserRound className="size-4 shrink-0" aria-hidden />
             Профиль
           </NavLink>
           <NavLink to="/groups" className={navClass}>
-            <Users className="mr-1 inline size-4" aria-hidden />
+            <Users className="size-4 shrink-0" aria-hidden />
             Группы
           </NavLink>
           <NavLink to="/profile/settings" className={navClass}>
-            <Settings className="mr-1 inline size-4" aria-hidden />
+            <Settings className="size-4 shrink-0" aria-hidden />
             Настройки
           </NavLink>
           <NavLink to="/about" className={navClass}>
-            <Info className="mr-1 inline size-4" aria-hidden />
+            <Info className="size-4 shrink-0" aria-hidden />
             О проекте
           </NavLink>
         </nav>
