@@ -1,4 +1,4 @@
-# DockHost Compose template for BirthdayPlanner (sandbox / example.org).
+# DockHost Compose template for BirthdayPlanner (sandbox / your public domain).
 # Copy to dockhost.yaml, fill secrets in environment.variables, then:
 #   dockhost compose apply dockhost.yaml
 #
@@ -23,7 +23,8 @@ environment:
     JWT_SECRET_KEY: change-me
     TELEGRAM_ADMIN_ID: ""
     VITE_TELEGRAM_BOT_NAME: YourBotName
-    # Baked into frontend image at build time (also set ARG defaults in Dockerfile.frontend).
+    # Baked into frontend image at build time: Dockerfile.frontend requires it as a build arg
+    # (no default in git).
     VITE_TELEGRAM_AUTH_URL: https://example.org/api/auth/telegram
     COOKIE_SECURE: true
     # Comma-separated origins, NOT a JSON array.

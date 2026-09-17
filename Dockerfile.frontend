@@ -14,15 +14,20 @@ COPY --from=frontend-deps /app/node_modules ./node_modules
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/ .
 
-# Baked for DockHost production (CLI has no --build-arg).
+# Public URLs are build args, not defaults: the real host stays out of git.
+# VITE_TELEGRAM_AUTH_URL is required (e.g. https://example.org/api/auth/telegram);
+# the build fails without it instead of shipping a login widget pointed at 127.0.0.1.
+# VITE_API_PROXY_TARGET only configures the Vite dev-server proxy; a static build ignores it.
 ARG VITE_TELEGRAM_BOT_NAME=BirthdayPlanner_bot
-ARG VITE_TELEGRAM_AUTH_URL=https://example.org/api/auth/telegram
-ARG VITE_API_PROXY_TARGET=https://example.org
+ARG VITE_TELEGRAM_AUTH_URL
+ARG VITE_API_PROXY_TARGET=
 ENV VITE_TELEGRAM_BOT_NAME=$VITE_TELEGRAM_BOT_NAME \
     VITE_TELEGRAM_AUTH_URL=$VITE_TELEGRAM_AUTH_URL \
     VITE_API_PROXY_TARGET=$VITE_API_PROXY_TARGET
 
-RUN npm run build
+RUN test -n "$VITE_TELEGRAM_AUTH_URL" \
+      || { echo "VITE_TELEGRAM_AUTH_URL build arg is required" >&2; exit 1; } \
+    && npm run build
 
 FROM nginx:1.27-alpine
 
